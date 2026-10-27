@@ -43,6 +43,20 @@ a { color: inherit; }
 .feed.sub { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); overflow: visible; min-height: 0; }
 .feed .tag { color: var(--accent); font-size: 11.5px; }
 .items li.plan { display: block; }
+.issue-row { cursor: pointer; border-radius: 6px; padding: 4px; margin: -4px; }
+.issue-row:hover { background: var(--panel-2); }
+.card[data-card] { font: inherit; color: inherit; text-align: left; cursor: pointer; }
+.card[data-card]:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.card[aria-pressed="true"] { border-color: var(--accent); }
+.ac-group { padding: 0 7px; font-size: 11.5px; color: var(--accent); }
+.flink { color: var(--accent); text-decoration: none; }
+.flink:hover { text-decoration: underline; }
+.plan-files { margin-top: 8px; line-height: 1.8; }
+.dlg-k { font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.pre { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; background: var(--panel-2); border-radius: 8px; padding: 8px 10px; }
+.panel-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.panel-head h2 { margin: 0; }
+.panel-head .filters { margin: 0; }
 .plans-panel .items { gap: 6px; }
 .plan details { background: var(--panel-2); border-radius: 8px; padding: 8px 12px; }
 .plan summary { display: flex; gap: 12px; justify-content: space-between; align-items: center; cursor: pointer; list-style: none; }
@@ -292,9 +306,17 @@ function barHtml(board, rows) {
   return (board.statuses || []).map(s => [s, rows.filter(r => r.status === s.id).length]).filter(([, n]) => n)
     .map(([s, n]) => `<span style="width:${n / rows.length * 100}%;background:var(--${s.color})" title="${esc(s.label)} ${n}"></span>`).join("");
 }
-const openIssues = b => (b.issues || []).filter(i => i.status !== "verified").length;
+const isUnclosed = i => i.status !== "verified";
+const openIssues = b => (b.issues || []).filter(isUnclosed).length;
+let issuesOpenOnly = false;
 
 const focusBtn = (session, pane, who) => `<button type="button" class="chip focus-btn" data-focus-session="${esc(session)}" data-focus-pane="${esc(pane)}" data-focus-who="${esc(who)}" title="在 herdr 里切到这个 pane">⤢ 定位</button>`;
+const renderedHTML = new WeakMap();
+const put = el => ({ set innerHTML(html) { if (renderedHTML.get(el) !== html) { renderedHTML.set(el, html); el.innerHTML = html; } } });
+let pointerDown = false, renderQueued = false;
+addEventListener("pointerdown", () => { pointerDown = true; }, true);
+addEventListener("pointerup", () => setTimeout(() => { pointerDown = false; if (renderQueued) { renderQueued = false; render(false); } }, 0), true);
+addEventListener("pointercancel", () => { pointerDown = false; }, true);
 function toast(html) {
   const el = document.getElementById("toast");
   el.innerHTML = html; el.hidden = false;
@@ -341,7 +363,7 @@ function renderOverview() {
   const sessions = STATE.sessions, boards = allBoards(), mine = boards.filter(isSubscribed), others = boards.filter(b => !isSubscribed(b));
   const fresh = new Set(firstVisit ? [] : boards.map(boardKey).filter(k => !seen.has(k)));
   boards.forEach(b => seen.add(boardKey(b))); saveSet(SEEN_KEY, seen);
-  document.getElementById("crumb").innerHTML = `订阅 ${mine.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
+  put(document.getElementById("crumb")).innerHTML = `订阅 ${mine.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
   const needs = mine.flatMap(b => (b.needs || []).map(n => ({ ...n, board: b })));
   const otherNeeds = others.reduce((n, b) => n + (b.needs || []).length, 0);
   const subBtn = (attr, key, text) => `<button type="button" class="chip sub" ${attr}="${esc(key)}">${text}</button>`;
@@ -372,7 +394,7 @@ function renderOverview() {
         <div class="cat-list">${bs.map(b => `<div class="cat-item"><span class="name">${esc(b.name)}</span>${b.auto ? ` <span class="chip">未登记</span>` : ""}${fresh.has(boardKey(b)) ? ` <span class="chip new">新</span>` : ""}
           <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
     </details>` : "";
-  document.getElementById("app").innerHTML = mine.length ? `
+  put(document.getElementById("app")).innerHTML = mine.length ? `
     <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你 · 已订阅的看板</h2>${needsList(needs, null, true)}</section><div class="panel rail-box" id="rail-slot"></div></div>
     ${mySessions.map(({ s, bs }) => `<section class="session" aria-label="session ${esc(s.name)}">
       <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
@@ -394,12 +416,59 @@ document.addEventListener("click", e => {
   render(false);
 });
 
-const filters = { card: "", q: "", active: new Set() };
+const filters = { card: "", q: "", group: "", active: new Set() };
+const fileHref = (b, rel) => `/files/${encodeURIComponent(b.session)}/${encodeURIComponent(b.id)}/${rel.split("/").map(encodeURIComponent).join("/")}`;
+const fileLink = (b, rel, text) => rel ? `<a class="flink mono" href="${fileHref(b, rel)}" target="_blank" rel="noopener" title="${esc(rel)}">${esc(text)}</a>` : `<span class="mono">${esc(text)}</span>`;
+
+function jumpToTable() {
+  const b = current(); if (!b) return;
+  const fCard = document.getElementById("f-card"), fq = document.getElementById("f-q");
+  if (fCard) fCard.value = filters.card;
+  if (fq) fq.value = filters.q;
+  renderCards(b); renderTable(b);
+  document.getElementById("h-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function openIssue(b, id) {
+  const i = (b.issues || []).find(x => x.id === id); if (!i) return;
+  document.getElementById("dlg-title").textContent = `${i.id} · ${i.title || ""}`;
+  const block = (k, v) => v ? `<section><div class="dlg-k">${k}</div><div class="pre">${esc(v)}</div></section>` : "";
+  const acs = (i.acs || []).map(a => { const m = String(a).match(/^(\d{5})\s+([A-Z]+-?\d+[a-z]?)/);
+    return m && (b.rows || []).some(r => r.card === m[1] && r.ac === m[2]) ? `<button type="button" class="chip" data-ac-jump="${esc(m[1])}|${esc(m[2])}" title="在 AC 表里定位">${esc(a)}</button>` : `<span class="chip">${esc(a)}</span>`; }).join(" ");
+  const facts = [["状态", i.status], ["严重程度", i.severity], ["归因", i.cause], ["组", i.group], ["轮次", i.round && `第 ${i.round} 轮`], ["PR", i.pr], ["CI", i.ci]].filter(([, v]) => v)
+    .map(([k, v]) => `<span class="pill" style="color:${k === "状态" ? col(b, v) : "var(--muted)"}">${esc(k)} ${esc(v)}</span>`).join(" ");
+  const notes = Object.entries(i.notes || {});
+  document.getElementById("dlg-body").innerHTML = `<div style="display:flex;flex-wrap:wrap;gap:6px">${facts}</div>
+    ${acs ? `<section><div class="dlg-k">关联 AC</div><div style="display:flex;flex-wrap:wrap;gap:6px">${acs}</div></section>` : ""}
+    ${block("复现", i.repro)}${block("期望", i.expected)}${block("实际", i.actual)}
+    ${notes.length ? `<details><summary class="dlg-k" style="cursor:pointer">其他记录（${notes.length}）</summary>${notes.map(([k, v]) => block(k, v)).join("")}</details>` : ""}
+    ${(i.evidence || []).map(s => `<figure style="margin:0"><figcaption class="mono muted" style="font-size:12px;margin-bottom:4px">${esc(s)}</figcaption><img loading="lazy" src="${fileHref(b, s)}" alt="${esc(i.id)} 证据截图"></figure>`).join("")}
+    ${i.file ? `<div class="s">原始记录：${fileLink(b, i.file, i.file.split("/").pop())}</div>` : ""}`;
+  dlg.showModal();
+}
+
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-card], [data-group], [data-issue], [data-ac-jump], [data-clear-group]");
+  if (!t || e.target.closest("a")) return;
+  const b = current(); if (!b) return;
+  if (t.dataset.card !== undefined) { filters.card = filters.card === t.dataset.card ? "" : t.dataset.card; return jumpToTable(); }
+  if (t.dataset.group !== undefined) { filters.group = filters.group === t.dataset.group ? "" : t.dataset.group; return jumpToTable(); }
+  if (t.dataset.clearGroup !== undefined) { filters.group = ""; return jumpToTable(); }
+  if (t.dataset.issue !== undefined) return openIssue(b, t.dataset.issue);
+  const [card, ac] = t.dataset.acJump.split("|");
+  filters.card = card; filters.q = ac; filters.group = ""; filters.active.clear();
+  dlg.close(); jumpToTable();
+});
+document.addEventListener("keydown", e => {
+  const row = e.key === "Enter" && e.target.closest("[data-issue]");
+  if (row && current()) openIssue(current(), row.dataset.issue);
+});
 const openRest = new Set();
 let scrollToFocus = false;
 let shown = [];
 
 function renderBoardShell(b) {
+  ["app", "crumb"].forEach(id => renderedHTML.delete(document.getElementById(id)));
   document.getElementById("title").textContent = b.name;
   document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>`;
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
@@ -411,7 +480,7 @@ function renderBoardShell(b) {
     ${hasRows && cards.length > 1 ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
     ${hasRows ? `<section class="panel" aria-labelledby="h-table"><h2 id="h-table">逐条 AC（点击查看截图与核对意见）</h2>
       <div class="filters">${cards.length > 1 ? `<select id="f-card" aria-label="卡"><option value="">全部卡</option>${cards.map(c => `<option value="${esc(c)}">${esc(c)} ${esc(b.cards[c])}</option>`).join("")}</select>` : ""}
-        <input id="f-q" type="search" placeholder="搜索 AC、类别、结论…" aria-label="搜索"><span class="count mono" id="f-count"></span></div>
+        <input id="f-q" type="search" placeholder="搜索 AC、类别、结论…" aria-label="搜索"><span id="f-group"></span><span class="count mono" id="f-count"></span></div>
       <div class="filters" id="f-buckets" role="group" aria-label="按状态筛选"></div>
       <div class="tablebox"><table><thead><tr><th>卡</th><th>AC</th><th>类别</th><th>组</th><th>状态</th><th>QA Manager 核对</th><th>Issue</th><th>证据</th></tr></thead><tbody id="rows"></tbody></table></div>
     </section>` : ""}`;
@@ -424,7 +493,11 @@ function renderBoardShell(b) {
   });
   document.getElementById("hero").addEventListener("click", e => {
     const tile = e.target.closest("[data-stat], [data-stat-issues]"); if (!tile) return;
-    if (tile.dataset.statIssues !== undefined) return document.getElementById("issues-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (tile.dataset.statIssues !== undefined) {
+      issuesOpenOnly = !issuesOpenOnly;
+      const b = current(); renderHero(b); renderSide(b);
+      return document.getElementById("issues-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
     const id = tile.dataset.stat, only = filters.active.size === 1 && filters.active.has(id);
     filters.active.clear(); if (!only) filters.active.add(id);
     const b = current(); renderHero(b); renderTable(b);
@@ -462,6 +535,7 @@ function planItem(b, p) {
       <div class="what"><b class="mono">${esc(p.id)}</b> <span class="s">${esc(p.repo)} · ${esc(p.scope)}</span>
         ${p.tracked ? `<div class="pbar"><span style="width:${share * 100}%"></span></div><div class="s mono">实现 ${p.done}/${p.tasks} Task</div>` : p.tasks ? `<div class="s mono">${p.tasks} Task · 未配置进度文件</div>` : ""}</div>
       <span class="pills">${planPill}${impl}</span></summary>
+      <div class="plan-files s">${(p.files || []).map(f => `${f.label && (p.files || []).length > 1 ? `<b class="mono">${esc(f.label)}</b> ` : ""}计划 ${f.plan.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "—"} · 进度 ${f.progress.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "未配置"}`).join("<br>")}</div>
       ${p.task_list.length ? `<ul class="tasks">${rows}</ul>` : `<div class="s">计划里没有 ### Task 段落。</div>`}</details></li>`;
 }
 
@@ -472,7 +546,7 @@ function renderHero(b) {
   document.getElementById("hero").hidden = bare;
   document.getElementById("top-row").classList.toggle("bare", bare);
   if (share === null) {
-    document.getElementById("hero-main").innerHTML = phases ? `<div class="pipeline">${phases}</div>` : "";
+    put(document.getElementById("hero-main")).innerHTML = phases ? `<div class="pipeline">${phases}</div>` : "";
     return;
   }
   const C = 2 * Math.PI * 52; let off = 0;
@@ -481,8 +555,8 @@ function renderHero(b) {
   }).join("");
   const tiles = (b.statuses || []).filter(s => !s.exclude).map(s => [s, rows.filter(r => r.status === s.id).length]).filter(([, n]) => n)
     .map(([s, n]) => `<button type="button" class="stat" data-stat="${esc(s.id)}" aria-pressed="${filters.active.size === 1 && filters.active.has(s.id)}" title="只看「${esc(s.label)}」的 AC"><div class="n mono">${n}</div><div class="k"><i class="dot" style="background:var(--${s.color})"></i>${esc(s.label)}</div></button>`).join("")
-    + `<button type="button" class="stat" data-stat-issues title="看缺陷列表"><div class="n mono">${openIssues(b)}</div><div class="k"><i class="dot" style="background:var(--fail)"></i>未关闭缺陷</div></button>`;
-  document.getElementById("hero-main").innerHTML = `<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--panel-2)" stroke-width="12"/>${segs}</svg>
+    + `<button type="button" class="stat" data-stat-issues aria-pressed="${issuesOpenOnly}" title="缺陷列表只看未关闭的"><div class="n mono">${openIssues(b)}</div><div class="k"><i class="dot" style="background:var(--fail)"></i>未关闭缺陷</div></button>`;
+  put(document.getElementById("hero-main")).innerHTML = `<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--panel-2)" stroke-width="12"/>${segs}</svg>
     <div class="center"><span class="pct mono">${Math.round(share * 100)}%</span><span class="lbl">已出结论</span></div></div>
     <div><div class="stats">${tiles}</div>${phases ? `<div class="pipeline">${phases}</div>` : ""}</div>`;
 }
@@ -490,7 +564,7 @@ function renderHero(b) {
 function renderAgents(b) {
   const box = document.getElementById("agents");
   if (!(b.workers || []).length && !(b.missing || []).length) {
-    box.innerHTML = `<div class="panel empty-board">认领了 ${b.claimed.map(t => `<span class="chip mono">${esc(t)}</span>`).join(" ")}，但 herdr 里还没有这些 tab。lead 开出 W· tab 并起 worker 后，这里会自动出现。</div>`;
+    put(box).innerHTML = `<div class="panel empty-board">认领了 ${b.claimed.map(t => `<span class="chip mono">${esc(t)}</span>`).join(" ")}，但 herdr 里还没有这些 tab。lead 开出 W· tab 并起 worker 后，这里会自动出现。</div>`;
     return;
   }
   const rows = counted(b), flagged = flaggedNames(b), focus = route()?.worker || "";
@@ -504,14 +578,14 @@ function renderAgents(b) {
     return `<div class="agent ${esc(w.status)} ${flagged.has(w.name) || !w.name ? "flag" : ""} ${w.name && w.name === focus ? "focus" : ""}" data-w="${esc(w.name)}">
       <div class="row1"><span class="light"></span><span class="role">${esc(w.role)}</span><span class="st">${esc(STATUS_ZH[w.status] || w.status)}</span></div>
       <div class="meta">${w.pane ? focusBtn(b.session, w.pane, w.role) : ""}<span class="mono">${esc(w.name || "无名")}</span>${w.tab !== mainline(b, w.tab) ? `<span class="mono">· ${esc(w.tab.slice(mainline(b, w.tab).length))}</span>` : ""}
-        ${mine.length ? `<span class="mono" style="color:var(--accent)">AC ${mine.filter(r => doneIds.has(r.status)).length}/${mine.length}</span>` : ""}</div>
-      ${w.task ? `<div class="rep" title="${esc(w.task.brief)}">任务 <span class="mono">${esc(w.task.brief.split("/").pop() || "—")}</span> · 派于 ${esc(ago(w.task.at))}</div>`
+        ${mine.length ? `<button type="button" class="chip ac-group mono" data-group="${esc(w.group)}" title="AC 表只看 ${esc(w.group)} 组">AC ${mine.filter(r => doneIds.has(r.status)).length}/${mine.length}</button>` : ""}</div>
+      ${w.task ? `<div class="rep" title="${esc(w.task.brief)}">任务 ${fileLink(b, w.task.brief_href, w.task.brief.split("/").pop() || "—")} · 派于 ${esc(ago(w.task.at))}</div>`
         : w.name ? `<div class="rep">未登记任务</div>` : ""}
-      ${rep ? `<div class="rep" title="${esc(rep.file)}：${esc(rep.detail)}">报告 ${rep.stale ? `<b style="color:var(--warn)">未更新</b>` : `<b style="color:var(--${FIXED[rep.state] || "muted"})">${esc(rep.state)}</b>`} · <span class="mono">${esc(rep.file.split("/").pop())}</span> · ${esc(ago(rep.mtime))}</div>`
+      ${rep ? `<div class="rep" title="${esc(rep.file)}：${esc(rep.detail)}">报告 ${rep.stale ? `<b style="color:var(--warn)">未更新</b>` : `<b style="color:var(--${FIXED[rep.state] || "muted"})">${esc(rep.state)}</b>`} · ${fileLink(b, w.task?.report_href, rep.file.split("/").pop())} · ${esc(ago(rep.mtime))}</div>`
         : w.task && w.task.report ? `<div class="rep">报告 <span class="mono">${esc(w.task.report.split("/").pop())}</span> 还没写首行 STATUS</div>` : ""}
       <div class="doing">${esc(w.doing || "—")}</div></div>`;
   };
-  box.innerHTML = Object.entries(byLine).sort().map(([line, ws]) => {
+  put(box).innerHTML = Object.entries(byLine).sort().map(([line, ws]) => {
     const front = ws.filter(loud), rest = ws.filter(w => !loud(w)), key = `${boardKey(b)}|${line}`;
     return `<div class="tabgroup"><h3 class="mono">${esc(line)} <span class="muted" style="font-weight:400">· ${ws.length} worker</span></h3>
       ${front.length ? `<div class="agents">${front.map(card).join("")}</div>` : ""}
@@ -546,7 +620,7 @@ function renderRail() {
   const b = current(), all = railEvents(), present = new Set(all.map(e => e.kind));
   if (railKind !== "all" && !present.has(railKind)) railKind = "all";
   railPart("h-rail").textContent = b ? "动态" : "动态 · 已订阅的看板";
-  railPart("rail-kinds").innerHTML = KINDS.filter(([k]) => k === "all" || present.has(k))
+  put(railPart("rail-kinds")).innerHTML = KINDS.filter(([k]) => k === "all" || present.has(k))
     .map(([k, label]) => `<button type="button" class="chip" data-kind="${k}" aria-pressed="${railKind === k}">${label}${k === "all" ? "" : ` <span class="mono">${all.filter(e => e.kind === k).length}</span>`}</button>`).join("");
   const list = all.filter(e => railKind === "all" || e.kind === railKind);
   let freshCount = 0;
@@ -567,7 +641,7 @@ function renderRail() {
     i = j;
   }
   const feed = railPart("feed"), atTop = feed.scrollTop < 30;
-  feed.innerHTML = out.join("") || `<li class="empty-feed">还没有变化。worker 状态、报告 STATUS、AC 结论、缺陷状态的每次变化都会出现在这里。</li>`;
+  put(feed).innerHTML = out.join("") || `<li class="empty-feed">还没有变化。worker 状态、报告 STATUS、AC 结论、缺陷状态的每次变化都会出现在这里。</li>`;
   if (!freshCount) return;
   if (atTop && !railHover) feed.scrollTo({ top: 0, behavior: "smooth" });
   else { railPending += freshCount; showRailNew(); }
@@ -593,32 +667,37 @@ function renderSide(b) {
   const list = (items, empty) => items.length ? items.join("") : `<li class="s">${empty}</li>`;
   const parts = [];
   if ((b.pending || []).length) parts.push(`<section class="panel" aria-label="等你确认"><h2>等你确认</h2><ul class="items">${list(b.pending.map(p => `<li><div class="what"><b class="mono">${esc(p.id)}</b> · ${esc(p.ac)}<div class="s">${esc(p.ask)}</div></div></li>`), "")}</ul></section>`);
-  if ((b.issues || []).length) parts.push(`<section class="panel" aria-label="缺陷与修复" id="issues-panel"><h2>缺陷与修复</h2><ul class="items">${list(b.issues.map(i => `<li><div class="what"><b class="mono">${esc(i.id)}</b> ${esc(i.title)}<div class="s">${esc((i.acs || []).join("、"))} · ${esc(i.cause)} · 第 ${esc(i.round)} 轮${i.pr ? ` · PR ${esc(i.pr)}` : ""}${i.ci ? ` · CI ${esc(i.ci)}` : ""}</div></div><span class="pill" style="color:${col(b, i.status)}">${esc(i.status)}</span></li>`), "")}</ul></section>`);
+  const unclosed = (b.issues || []).filter(isUnclosed), shownIssues = issuesOpenOnly ? unclosed : (b.issues || []);
+  if ((b.issues || []).length) parts.push(`<section class="panel" aria-label="缺陷与修复" id="issues-panel"><div class="panel-head"><h2>缺陷与修复</h2>
+    <div class="filters" role="group" aria-label="缺陷筛选"><button type="button" class="chip" data-issues-filter="all" aria-pressed="${!issuesOpenOnly}">全部 <span class="mono">${b.issues.length}</span></button><button type="button" class="chip" data-issues-filter="open" aria-pressed="${issuesOpenOnly}">未关闭 <span class="mono">${unclosed.length}</span></button></div></div>
+    <ul class="items">${list(shownIssues.map(i => `<li class="issue-row" data-issue="${esc(i.id)}" tabindex="0" role="button" title="查看复现、期望、实际与证据"><div class="what"><b class="mono">${esc(i.id)}</b> ${esc(i.title)}<div class="s">${esc((i.acs || []).join("、"))} · ${esc(i.cause)} · 第 ${esc(i.round)} 轮${i.pr ? ` · PR ${esc(i.pr)}` : ""}${i.ci ? ` · CI ${esc(i.ci)}` : ""}</div></div><span class="pill" style="color:${col(b, i.status)}">${esc(i.status)}</span></li>`), "没有未关闭的缺陷")}</ul></section>`);
   if ((b.plans || []).length) { const { done, total } = implTotals(b); parts.push(`<section class="panel plans-panel" aria-label="子计划与开发进度" id="plans-panel"><h2>子计划 · 开发进度${total ? ` <span class="mono" style="color:var(--accent)">${done}/${total} Task</span>` : ""}</h2><ul class="items">${b.plans.map(p => planItem(b, p)).join("")}</ul></section>`); }
   const side = document.getElementById("side");
-  if (!side.dataset.wired) { side.dataset.wired = "1"; side.addEventListener("toggle", e => { const k = e.target.dataset?.plan; if (k) e.target.open ? openPlans.add(k) : openPlans.delete(k); }, true); }
-  side.innerHTML = parts.join(""); side.hidden = !parts.length;
+  if (!side.dataset.wired) { side.dataset.wired = "1";
+    side.addEventListener("click", e => { const f = e.target.closest("[data-issues-filter]"); if (!f) return; issuesOpenOnly = f.dataset.issuesFilter === "open"; const b = current(); renderHero(b); renderSide(b); }); side.addEventListener("toggle", e => { const k = e.target.dataset?.plan; if (k) e.target.open ? openPlans.add(k) : openPlans.delete(k); }, true); }
+  put(side).innerHTML = parts.join(""); side.hidden = !parts.length;
 }
 
 function renderCards(b) {
   const box = document.getElementById("cards"); if (!box) return;
-  box.innerHTML = Object.entries(b.cards).map(([code, name]) => {
+  put(box).innerHTML = Object.entries(b.cards).map(([code, name]) => {
     const all = (b.rows || []).filter(r => r.card === code), rows = counted({ ...b, rows: all });
-    if (rows.length) return `<div class="card"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></div>`;
+    if (rows.length) return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></button>`;
     const chips = (b.plans || []).filter(p => (p.covers || []).includes(code)).map(p => { const st = p.tracked ? progressState(p.done, p.tasks) : p.state === "done" ? "done" : "now"; return `<span class="pill mono" style="color:var(--${st === "done" ? "pass" : st === "now" ? "info" : "muted"})">${esc(p.id)} ${p.tracked ? `${p.done}/${p.tasks}` : p.state === "done" ? "✓" : "…"}</span>`; }).join(" ");
-    return `<div class="card"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></div>`;
+    return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></button>`;
   }).join("");
 }
 
 function renderTable(b) {
   const tbody = document.getElementById("rows"); if (!tbody || !b) return;
   const present = (b.statuses || []).filter(s => (b.rows || []).some(r => r.status === s.id));
-  document.getElementById("f-buckets").innerHTML = present.map(s => `<button type="button" class="chip" aria-pressed="${filters.active.has(s.id)}" data-b="${esc(s.id)}"><i class="dot" style="background:var(--${s.color})"></i> ${esc(s.label)} <span class="mono">${b.rows.filter(r => r.status === s.id).length}</span></button>`).join("");
+  put(document.getElementById("f-buckets")).innerHTML = present.map(s => `<button type="button" class="chip" aria-pressed="${filters.active.has(s.id)}" data-b="${esc(s.id)}"><i class="dot" style="background:var(--${s.color})"></i> ${esc(s.label)} <span class="mono">${b.rows.filter(r => r.status === s.id).length}</span></button>`).join("");
   const q = filters.q.trim().toLowerCase();
-  shown = b.rows.filter(r => (!filters.card || r.card === filters.card) && (!filters.active.size || filters.active.has(r.status)) &&
+  put(document.getElementById("f-group")).innerHTML = filters.group ? `<button type="button" class="chip" data-clear-group aria-pressed="true">组 ${esc(filters.group)} ✕</button>` : "";
+  shown = b.rows.filter(r => (!filters.card || r.card === filters.card) && (!filters.group || r.group === filters.group) && (!filters.active.size || filters.active.has(r.status)) &&
     (!q || [r.ac, r.cat, r.how, r.final, r.qam, r.issue].join(" ").toLowerCase().includes(q)));
   document.getElementById("f-count").textContent = `${shown.length} 条`;
-  tbody.innerHTML = shown.map((r, i) => `<tr tabindex="0" data-i="${i}"><td class="mono">${esc(r.card)}</td><td class="mono">${esc(r.ac)}</td><td>${esc(r.cat)}</td><td class="mono">${esc(r.group)}</td>
+  put(tbody).innerHTML = shown.map((r, i) => `<tr tabindex="0" data-i="${i}"><td class="mono">${esc(r.card)}</td><td class="mono">${esc(r.ac)}</td><td>${esc(r.cat)}</td><td class="mono">${esc(r.group)}</td>
     <td><span class="pill" style="color:${col(b, r.status)}">${esc(r.final)}</span></td><td class="note">${esc(r.qam === "—" ? "" : r.qam)}</td><td class="mono">${esc(r.issue)}</td>
     <td class="cam mono">${r.shots && r.shots.length ? "▣ " + r.shots.length : ""}</td></tr>`).join("");
 }
@@ -627,7 +706,7 @@ const dlg = document.getElementById("dlg");
 function openRow(b, i) {
   const r = shown[i]; if (!r) return;
   document.getElementById("dlg-title").textContent = `${r.card} ${r.ac} · ${r.final}`;
-  const fileUrl = s => `/files/${encodeURIComponent(b.session)}/${encodeURIComponent(b.id)}/${s.split("/").map(encodeURIComponent).join("/")}`;
+  const fileUrl = s => fileHref(b, s);
   document.getElementById("dlg-body").innerHTML = `<div><b>${esc(r.cat)}</b> · ${esc(r.how)} · 组 ${esc(r.group)}</div>
     ${r.qa && r.qa !== r.final ? `<div><span class="muted">QA 结论：</span>${esc(r.qa)}</div>` : ""}
     ${r.qam && r.qam !== "—" ? `<div><span class="muted">QA Manager：</span>${esc(r.qam)}</div>` : ""}
@@ -640,13 +719,14 @@ function current() { const r = route(); return r && allBoards().find(b => b.sess
 
 function render(routeChanged) {
   if (!STATE?.sessions) return;
+  if (pointerDown && !routeChanged) { renderQueued = true; return; }
   const b = current(), key = b ? boardKey(b) : "overview";
   if (!b) { renderOverview(); mountRail(); renderRail(); view = key; firstRender = false; return; }
-  if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); renderBoardShell(b); view = key; }
+  if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = false; renderBoardShell(b); view = key; }
   const needs = b.needs || [];
   mountRail(); renderHero(b);
   document.getElementById("needs-sec").hidden = !needs.length;
-  document.getElementById("needs").innerHTML = needsList(needs, b);
+  put(document.getElementById("needs")).innerHTML = needsList(needs, b);
   document.getElementById("ok-badge").hidden = needs.length > 0;
   document.getElementById("sub-here").textContent = isSubscribed(b) ? "★ 已订阅 · 取消" : "☆ 订阅这块看板";
   renderAgents(b); renderRail(); renderSide(b); renderCards(b); renderTable(b);

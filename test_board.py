@@ -42,7 +42,9 @@ def test_progress_lines_cover_merged_and_skipped_tasks():
     with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
         open(os.path.join(root, "plan.md"), "w", encoding="utf-8").write("### Task F2-9: a\n### Task F2-10: b\n### Task 7: c\n### Task 8: d\n")
         open(os.path.join(root, "STATUS.md"), "w", encoding="utf-8").write("STATUS: in-progress\nTask F2-9/10 ✔ abc123 ok\nTask 7 — no work\n")
-        tasks, impl = serve.plan_part(root, dict(plan="plan.md", progress="STATUS.md"), "")
+        tasks, impl, files = serve.plan_part(root, dict(plan="plan.md", progress="STATUS.md"), "")
+        assert files["plan"] == ["plan.md"] and files["progress"] == ["STATUS.md"]
+        assert serve.root_rel(root, "../outside.md") == ""
         assert [t["done"] for t in tasks] == [True, True, True, False]
         assert tasks[0]["sha"] == "abc123" and impl["state"] == "in-progress"
 

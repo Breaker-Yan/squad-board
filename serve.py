@@ -117,6 +117,16 @@ def ac_rows(board):
     return rows
 
 
+ISSUE_KEYS = ["id", "title", "acs", "cause", "status", "round", "pr", "ci", "severity", "group", "repro", "expected", "actual"]
+
+
+def root_rel(root, path):
+    if not root:
+        return ""
+    base, full = os.path.realpath(root), os.path.realpath(os.path.join(root, path))
+    return os.path.relpath(full, base) if full.startswith(base + os.sep) and os.path.isfile(full) else ""
+
+
 def issues(board):
     pattern = board.get("sources", {}).get("issues")
     out = []
@@ -125,7 +135,14 @@ def issues(board):
             data = json.load(open(path, encoding="utf-8"))
         except ValueError:
             continue
-        out.append({k: data.get(k) for k in ["id", "title", "acs", "cause", "status", "round", "pr", "ci"]})
+        item = {k: data.get(k) for k in ISSUE_KEYS}
+        fix = data.get("fix") if isinstance(data.get("fix"), dict) else {}
+        item["pr"] = item["pr"] or fix.get("pr")
+        evidence = [e for e in as_list(data.get("evidence") or []) if isinstance(e, str)]
+        item["evidence"] = [rel for rel in (root_rel(board["root"], os.path.join(os.path.dirname(path), e)) for e in evidence) if rel]
+        item["notes"] = {k: v for k, v in data.items() if k not in ISSUE_KEYS + ["evidence", "fix", "cards"] and isinstance(v, str) and v.strip()}
+        item["file"] = root_rel(board["root"], path)
+        out.append(item)
     return out
 
 
@@ -158,6 +175,7 @@ def plan_part(root, part, label):
     for path in globbed(root, part["plan"]):
         tasks += [dict(id=i, title=t.strip("` ")[:120], part=label) for i, t in PLAN_TASK.findall(open(path, encoding="utf-8").read())]
     done, impl = {}, None
+    files = dict(label=label, plan=[root_rel(root, f) for f in globbed(root, part["plan"])], progress=[root_rel(root, f) for f in globbed(root, part.get("progress"))])
     for path in globbed(root, part.get("progress")):
         text = open(path, encoding="utf-8").read()
         for token, note in SKIP_TASK.findall(text):
@@ -168,7 +186,7 @@ def plan_part(root, part, label):
     for task in tasks:
         sha, note = done.get(task["id"], ("", ""))
         task.update(done=task["id"] in done, sha=sha, note=note)
-    return tasks, impl
+    return tasks, impl, files
 
 
 def plans(board):
@@ -177,17 +195,18 @@ def plans(board):
         files = globbed(board["root"], plan["files"])
         status = report_status(board["root"], plan["files"])
         parts = plan.get("parts") or [dict(plan=plan["files"], progress=plan.get("progress"))]
-        tasks, impls = [], []
+        tasks, impls, part_files = [], [], []
         for part in parts:
-            got, impl = plan_part(board["root"], part, part.get("label", ""))
+            got, impl, files = plan_part(board["root"], part, part.get("label", ""))
             tasks += got
             impls += [impl] if impl else []
+            part_files.append(files)
         impl = min(impls, key=lambda r: IMPL_RANK.get(r["state"], 1)) if impls else None
         out.append(dict(id=plan["id"], repo=plan.get("repo", ""), scope=plan.get("scope", ""), covers=plan.get("covers", []),
                         state=status["state"] if status else ("missing" if not files else "unknown"),
                         tasks=len(tasks), done=sum(t["done"] for t in tasks), task_list=tasks,
                         impl=dict(state=impl["state"], detail=impl["detail"], mtime=impl["mtime"]) if impl else None,
-                        tracked=any(p.get("progress") for p in parts)))
+                        tracked=any(p.get("progress") for p in parts), files=part_files))
     return out
 
 
@@ -216,7 +235,8 @@ def worker_view(agent, tab_label, spec, root, session, task=None):
     return dict(name=name, role=spec.get("role") or name or "无名 agent", group=spec.get("group"), tab=tab_label,
                 pane=agent.get("pane_id", ""), status=agent["agent_status"], seq=agent.get("state_change_seq"),
                 doing=activity.get((session, name), ""), report=report,
-                task=dict(brief=task.get("brief", ""), report=task.get("report", ""), at=task.get("at")) if task else None)
+                task=dict(brief=task.get("brief", ""), report=task.get("report", ""), at=task.get("at"),
+                          brief_href=root_rel(root, task.get("brief", "")), report_href=root_rel(root, task.get("report", ""))) if task else None)
 
 
 def needs(board):
