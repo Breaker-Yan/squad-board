@@ -1,0 +1,28 @@
+{
+  "name": "PROJ-1 Checkout",
+  "subtitle": "3 cards · acceptance on dev",
+  "root": "/absolute/path/to/project/docs",
+  "tabs": ["W·Checkout", "W·E2E"],
+  "cards": {"101": "Cart", "102": "Payment", "103": "Receipt"},
+  "workers": {
+    "proj1-qa-g1": {"role": "QA · G1 cart", "group": "G1"},
+    "proj1-engineer": {"role": "Engineer"}
+  },
+  "phases": [
+    {"label": "Plan", "state": "done"},
+    {"label": "Build", "state": "now"},
+    {"label": "Accept", "state": ""}
+  ],
+  "plans": [
+    {"id": "P1", "repo": "BE", "scope": "cart API", "files": "plans/P1-*.md", "covers": ["101"]}
+  ],
+  "statuses": [
+    {"id": "PASS", "label": "pass", "color": "pass", "done": true},
+    {"id": "FAIL", "label": "fail", "color": "fail", "done": true},
+    {"id": "PENDING", "label": "not reported", "color": "idle"}
+  ],
+  "sources": {
+    "issues": "acceptance/issues/I-*.json",
+    "pending": "acceptance/pending.json"
+  }
+}
