@@ -74,7 +74,8 @@
       "id": "PASS",
       "label": "pass",
       "color": "pass",
-      "done": true
+      "done": true,
+      "pass": true
     },
     {
       "id": "FAIL",

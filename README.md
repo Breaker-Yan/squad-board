@@ -48,6 +48,8 @@ Write `~/.squad-board/<herdr session>/<board id>.json` when the lead opens its f
 
 `tabs` matches a label exactly or with a `-N` suffix (`W·E2E` claims `W·E2E-2`). Everything else is optional; see `board.example.json`.
 
+AC `statuses` take optional flags: `done` (verdict reached), `pass` (counts toward the pass rate), `na` (concluded but untestable/not applicable, left out of the pass-rate denominator), `exclude` (out of scope, hidden from counts). The ring shows pass rate = `pass` / (non-`exclude`, non-`na`) rows; with no `pass` status it falls back to the `done` share.
+
 Development progress: give a plan a `progress` file (or `parts`, one plan/progress pair per split) and the board matches `### Task <id>: <title>` headings in the plan against `Task <id> ✔ <commit> <note>` lines in the progress file. `Task 9/10/11 ✔` counts all three; `Task 7 — <reason>` counts as skipped. A phase with `"auto": "impl"` shows the total `done/total Task`, `"auto": "plans"` shows how many plans are done.
 
 ## Recording a dispatch (per prompt)

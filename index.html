@@ -157,6 +157,7 @@ button.chip { cursor: pointer; color: var(--ink); }
 .ring .center { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; }
 .ring .pct { font-size: 32px; font-weight: 600; }
 .ring .lbl { font-size: 12px; color: var(--muted); }
+.ring-note { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(104px, 1fr)); gap: 10px; }
 .stat { background: var(--panel-2); border-radius: 8px; padding: 10px 12px; font: inherit; color: inherit; text-align: left; border: 1px solid transparent; cursor: pointer; }
 .stat:hover { border-color: var(--line); }
@@ -302,6 +303,16 @@ function doneShare(board) {
   const done = new Set((board.statuses || []).filter(s => s.done).map(s => s.id));
   return rows.filter(r => done.has(r.status)).length / rows.length;
 }
+function ringStats(board) {
+  const sts = board.statuses || [], rows = counted(board), ids = f => new Set(sts.filter(f).map(s => s.id));
+  const done = ids(s => s.done), pass = ids(s => s.pass), na = ids(s => s.na), gone = sts.find(s => s.exclude);
+  const concluded = rows.filter(r => done.has(r.status)).length;
+  const excluded = (board.rows || []).length - rows.length;
+  const note = `已出结论 ${concluded}/${rows.length}${excluded && gone ? ` · 另有 ${excluded} 条${gone.label}，不计入` : ""}`;
+  if (!pass.size) return { pct: Math.floor(concluded / rows.length * 100) + "%", label: "已出结论", note: "" };
+  const graded = rows.filter(r => !na.has(r.status)).length;
+  return { pct: graded ? Math.floor(rows.filter(r => pass.has(r.status)).length / graded * 100) + "%" : "–", label: "通过率", note };
+}
 function barHtml(board, rows) {
   return (board.statuses || []).map(s => [s, rows.filter(r => r.status === s.id).length]).filter(([, n]) => n)
     .map(([s, n]) => `<span style="width:${n / rows.length * 100}%;background:var(--${s.color})" title="${esc(s.label)} ${n}"></span>`).join("");
@@ -381,7 +392,7 @@ function renderOverview() {
         <div class="tabs">${lines.map(t => `<span class="chip mono">${esc(t)}</span>`).join("")}</div></div>
       <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</div></div>
       <div>${share === null ? `<div class="sub">${Object.keys(b.cards || {}).length ? `${Object.keys(b.cards).length} 张卡 · 未配置 AC 数据源` : "未配置 AC 数据源"}</div>`
-        : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${Math.round(share * 100)}% 已出结论 · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
+        : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${(r => `${r.pct} ${r.label}${r.note ? ` · ${r.note.split(" · ")[0]}` : ""}`)(ringStats(b))} · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
         ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}</div>`}</div>
       <div class="last">${last ? `<span class="mono">${esc(ago(last.ts) || last.at)}</span> · ${esc(last.text)}` : "还没有动态"}</div></a>${off}</div>`;
   };
@@ -549,7 +560,7 @@ function renderHero(b) {
     put(document.getElementById("hero-main")).innerHTML = phases ? `<div class="pipeline">${phases}</div>` : "";
     return;
   }
-  const C = 2 * Math.PI * 52; let off = 0;
+  const C = 2 * Math.PI * 52, ring = ringStats(b); let off = 0;
   const segs = (b.statuses || []).filter(s => s.done).map(s => [s, rows.filter(r => r.status === s.id).length]).filter(([, n]) => n).map(([s, n]) => {
     const len = n / rows.length * C; const seg = `<circle cx="60" cy="60" r="52" fill="none" stroke="var(--${s.color})" stroke-width="12" stroke-dasharray="${len} ${C - len}" stroke-dashoffset="${-off}"/>`; off += len; return seg;
   }).join("");
@@ -557,8 +568,8 @@ function renderHero(b) {
     .map(([s, n]) => `<button type="button" class="stat" data-stat="${esc(s.id)}" aria-pressed="${filters.active.size === 1 && filters.active.has(s.id)}" title="只看「${esc(s.label)}」的 AC"><div class="n mono">${n}</div><div class="k"><i class="dot" style="background:var(--${s.color})"></i>${esc(s.label)}</div></button>`).join("")
     + `<button type="button" class="stat" data-stat-issues aria-pressed="${issuesOpenOnly}" title="缺陷列表只看未关闭的"><div class="n mono">${openIssues(b)}</div><div class="k"><i class="dot" style="background:var(--fail)"></i>未关闭缺陷</div></button>`;
   put(document.getElementById("hero-main")).innerHTML = `<div class="ring"><svg viewBox="0 0 120 120" aria-hidden="true"><circle cx="60" cy="60" r="52" fill="none" stroke="var(--panel-2)" stroke-width="12"/>${segs}</svg>
-    <div class="center"><span class="pct mono">${Math.round(share * 100)}%</span><span class="lbl">已出结论</span></div></div>
-    <div><div class="stats">${tiles}</div>${phases ? `<div class="pipeline">${phases}</div>` : ""}</div>`;
+    <div class="center"><span class="pct mono">${ring.pct}</span><span class="lbl">${ring.label}</span></div></div>
+    <div>${ring.note ? `<div class="ring-note mono">${esc(ring.note)}</div>` : ""}<div class="stats">${tiles}</div>${phases ? `<div class="pipeline">${phases}</div>` : ""}</div>`;
 }
 
 function renderAgents(b) {
