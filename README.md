@@ -80,3 +80,7 @@ The last line per worker wins. A report older than its dispatch shows as "not up
 ```bash
 python3 test_board.py
 ```
+
+## License
+
+MIT, see [LICENSE](LICENSE).
