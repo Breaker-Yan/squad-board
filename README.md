@@ -1,11 +1,11 @@
 # squad-board
 
-A local, read-only, zero-dependency live board for multi-agent squads running in [herdr](https://herdr.dev).
+A local, zero-dependency live board for multi-agent squads running in [herdr](https://herdr.dev).
 
 One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, and a "needs you" list (blocked workers, stale reports, vanished workers, pending questions). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
 
 - Python 3 standard library only, no install step
-- Reads herdr through its CLI and reads files; never writes to herdr or to the project
+- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. The only action is **⤢ focus**: switch herdr's focus to a worker pane, accepted from loopback only
 - Serves files only from each board's `root`, with an extension allowlist
 - Binds `127.0.0.1` by default
 
@@ -47,6 +47,8 @@ Write `~/.squad-board/<herdr session>/<board id>.json` when the lead opens its f
 ```
 
 `tabs` matches a label exactly or with a `-N` suffix (`W·E2E` claims `W·E2E-2`). Everything else is optional; see `board.example.json`.
+
+Development progress: give a plan a `progress` file (or `parts`, one plan/progress pair per split) and the board matches `### Task <id>: <title>` headings in the plan against `Task <id> ✔ <commit> <note>` lines in the progress file. `Task 9/10/11 ✔` counts all three; `Task 7 — <reason>` counts as skipped. A phase with `"auto": "impl"` shows the total `done/total Task`, `"auto": "plans"` shows how many plans are done.
 
 ## Recording a dispatch (per prompt)
 

@@ -137,14 +137,57 @@ def pending(board):
         return []
 
 
+PLAN_TASK = re.compile(r"^### Task\s+([^:：\s]+)\s*[:：]?\s*(.*)$", re.M)
+DONE_TASK = re.compile(r"^Task\s+(\S+)\s*✔\s*(\S*)\s*(.*)$", re.M)
+SKIP_TASK = re.compile(r"^Task\s+(\S+)\s+[—–]\s+(.*)$", re.M)
+
+
+def task_ids(token):
+    first, *rest = token.split("/")
+    prefix = re.sub(r"\d+$", "", first)
+    return [first] + [r if not r.isdigit() else prefix + r for r in rest]
+IMPL_RANK = {"blocked": 0, "in-progress": 1, "done": 2}
+
+
+def globbed(root, patterns):
+    return sorted(f for p in as_list(patterns) if p for f in glob.glob(os.path.join(root, p)))
+
+
+def plan_part(root, part, label):
+    tasks = []
+    for path in globbed(root, part["plan"]):
+        tasks += [dict(id=i, title=t.strip("` ")[:120], part=label) for i, t in PLAN_TASK.findall(open(path, encoding="utf-8").read())]
+    done, impl = {}, None
+    for path in globbed(root, part.get("progress")):
+        text = open(path, encoding="utf-8").read()
+        for token, note in SKIP_TASK.findall(text):
+            done.update({i: ("", "跳过：" + note[:150]) for i in task_ids(token)})
+        for token, sha, note in DONE_TASK.findall(text):
+            done.update({i: (sha, note[:160]) for i in task_ids(token)})
+        impl = report_status(root, os.path.relpath(path, root))
+    for task in tasks:
+        sha, note = done.get(task["id"], ("", ""))
+        task.update(done=task["id"] in done, sha=sha, note=note)
+    return tasks, impl
+
+
 def plans(board):
     out = []
     for plan in board.get("plans", []):
-        files = sorted(f for p in as_list(plan["files"]) for f in glob.glob(os.path.join(board["root"], p)))
+        files = globbed(board["root"], plan["files"])
         status = report_status(board["root"], plan["files"])
-        tasks = sum(len(re.findall(r"^### Task", open(f, encoding="utf-8").read(), re.M)) for f in files)
+        parts = plan.get("parts") or [dict(plan=plan["files"], progress=plan.get("progress"))]
+        tasks, impls = [], []
+        for part in parts:
+            got, impl = plan_part(board["root"], part, part.get("label", ""))
+            tasks += got
+            impls += [impl] if impl else []
+        impl = min(impls, key=lambda r: IMPL_RANK.get(r["state"], 1)) if impls else None
         out.append(dict(id=plan["id"], repo=plan.get("repo", ""), scope=plan.get("scope", ""), covers=plan.get("covers", []),
-                        state=status["state"] if status else ("missing" if not files else "unknown"), tasks=tasks))
+                        state=status["state"] if status else ("missing" if not files else "unknown"),
+                        tasks=len(tasks), done=sum(t["done"] for t in tasks), task_list=tasks,
+                        impl=dict(state=impl["state"], detail=impl["detail"], mtime=impl["mtime"]) if impl else None,
+                        tracked=any(p.get("progress") for p in parts)))
     return out
 
 
@@ -171,7 +214,7 @@ def worker_view(agent, tab_label, spec, root, session, task=None):
     if report and report["mtime"] < task.get("at", 0):
         report["stale"] = True
     return dict(name=name, role=spec.get("role") or name or "无名 agent", group=spec.get("group"), tab=tab_label,
-                status=agent["agent_status"], seq=agent.get("state_change_seq"),
+                pane=agent.get("pane_id", ""), status=agent["agent_status"], seq=agent.get("state_change_seq"),
                 doing=activity.get((session, name), ""), report=report,
                 task=dict(brief=task.get("brief", ""), report=task.get("report", ""), at=task.get("at")) if task else None)
 
@@ -179,7 +222,7 @@ def worker_view(agent, tab_label, spec, root, session, task=None):
 def needs(board):
     out, now = [], time.time()
     for w in board["workers"]:
-        rep, at = w["report"], dict(worker=w["name"], tab=w["tab"])
+        rep, at = w["report"], dict(worker=w["name"], tab=w["tab"], pane=w.get("pane", ""))
         if not w["name"]:
             out.append(dict(level="warn", text="无名 agent，可能是 worker 重启后丢了 name", **at))
         elif w["status"] == "blocked":
@@ -310,10 +353,13 @@ def diff_board(old, new):
     for i in new["issues"]:
         if before.get(i["id"]) != i["status"]:
             out.append(dict(kind="issue", color=i["status"], text=f"{i['id']} {(i['title'] or '')[:40]}：{before.get(i['id'], '新建')} → {i['status']}"))
-    before = keyed(old["plans"], lambda p: p["id"], lambda p: p["state"])
+    before = keyed(old["plans"], lambda p: p["id"], lambda p: (p["state"], p.get("done", 0)))
     for p in new["plans"]:
-        if before.get(p["id"]) not in (None, p["state"]):
-            out.append(dict(kind="plan", color="info", text=f"子计划 {p['id']}：{before[p['id']]} → {p['state']}"))
+        prev = before.get(p["id"])
+        if prev and prev[0] != p["state"]:
+            out.append(dict(kind="plan", color="info", text=f"子计划 {p['id']}：{prev[0]} → {p['state']}"))
+        if prev and p["tracked"] and prev[1] != p["done"]:
+            out.append(dict(kind="plan", color="pass" if p["done"] == p["tasks"] else "info", text=f"子计划 {p['id']} 实现：{prev[1]} → {p['done']}/{p['tasks']} Task"))
     return out
 
 
@@ -385,6 +431,11 @@ def refresh_activity():
         time.sleep(15)
 
 
+def focusable(session, pane):
+    return any(w.get("pane") == pane for s in state["data"].get("sessions", []) if s["name"] == session
+               for b in s["boards"] for w in b.get("workers", []))
+
+
 def board_root(session, board_id):
     for board in load_boards().get(session, []):
         if board["id"] == board_id:
@@ -414,6 +465,21 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/files/"):
             return self.file(unquote(path[len("/files/"):]))
         self.send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        if urlparse(self.path).path != "/api/focus":
+            return self.send(404, b"not found", "text/plain")
+        if self.client_address[0] not in ("127.0.0.1", "::1"):
+            return self.send(403, "只能在本机定位 herdr pane".encode(), "text/plain; charset=utf-8")
+        try:
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)))
+            session, pane = body["session"], body["pane"]
+        except (ValueError, KeyError, TypeError):
+            return self.send(400, b"bad request", "text/plain")
+        if not focusable(session, pane):
+            return self.send(404, "这个 pane 已经不在了".encode(), "text/plain; charset=utf-8")
+        ok = '"focused":true' in run(["herdr", "--session", session, "agent", "focus", pane], timeout=10).replace(" ", "")
+        self.send(200 if ok else 502, json.dumps(dict(ok=ok, session=session), ensure_ascii=False).encode(), "application/json; charset=utf-8")
 
     def stream(self):
         self.send_response(200)

@@ -2,24 +2,91 @@
   "name": "PROJ-1 Checkout",
   "subtitle": "3 cards · acceptance on dev",
   "root": "/absolute/path/to/project/docs",
-  "tabs": ["W·Checkout", "W·E2E"],
-  "cards": {"101": "Cart", "102": "Payment", "103": "Receipt"},
+  "tabs": [
+    "W·Checkout",
+    "W·E2E"
+  ],
+  "cards": {
+    "101": "Cart",
+    "102": "Payment",
+    "103": "Receipt"
+  },
   "workers": {
-    "proj1-qa-g1": {"role": "QA · G1 cart", "group": "G1"},
-    "proj1-engineer": {"role": "Engineer"}
+    "proj1-qa-g1": {
+      "role": "QA · G1 cart",
+      "group": "G1"
+    },
+    "proj1-engineer": {
+      "role": "Engineer"
+    }
   },
   "phases": [
-    {"label": "Plan", "state": "done"},
-    {"label": "Build", "state": "now"},
-    {"label": "Accept", "state": ""}
+    {
+      "label": "Plan",
+      "auto": "plans"
+    },
+    {
+      "label": "Build",
+      "auto": "impl"
+    },
+    {
+      "label": "Accept",
+      "state": ""
+    }
   ],
   "plans": [
-    {"id": "P1", "repo": "BE", "scope": "cart API", "files": "plans/P1-*.md", "covers": ["101"]}
+    {
+      "id": "P1",
+      "repo": "BE",
+      "scope": "cart API",
+      "files": "plans/P1-*.md",
+      "progress": "exec/STATUS-P1.md",
+      "covers": [
+        "101"
+      ]
+    },
+    {
+      "id": "P2",
+      "repo": "FE",
+      "scope": "checkout UI",
+      "files": [
+        "plans/P2-*.md"
+      ],
+      "covers": [
+        "102"
+      ],
+      "parts": [
+        {
+          "label": "P2a",
+          "plan": "plans/P2a-*.md",
+          "progress": "exec/STATUS-P2a.md"
+        },
+        {
+          "label": "P2b",
+          "plan": "plans/P2b-*.md",
+          "progress": "exec/STATUS-P2b.md"
+        }
+      ]
+    }
   ],
   "statuses": [
-    {"id": "PASS", "label": "pass", "color": "pass", "done": true},
-    {"id": "FAIL", "label": "fail", "color": "fail", "done": true},
-    {"id": "PENDING", "label": "not reported", "color": "idle"}
+    {
+      "id": "PASS",
+      "label": "pass",
+      "color": "pass",
+      "done": true
+    },
+    {
+      "id": "FAIL",
+      "label": "fail",
+      "color": "fail",
+      "done": true
+    },
+    {
+      "id": "PENDING",
+      "label": "not reported",
+      "color": "idle"
+    }
   ],
   "sources": {
     "issues": "acceptance/issues/I-*.json",

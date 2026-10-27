@@ -36,7 +36,19 @@ def test_unregistered_tabs_of_one_lead_form_one_board():
     assert boards[0]["tabs"] == ["W·final", "W·root-tests"]
 
 
+def test_progress_lines_cover_merged_and_skipped_tasks():
+    assert serve.task_ids("F2-9/10/11") == ["F2-9", "F2-10", "F2-11"]
+    assert serve.task_ids("7") == ["7"]
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        open(os.path.join(root, "plan.md"), "w", encoding="utf-8").write("### Task F2-9: a\n### Task F2-10: b\n### Task 7: c\n### Task 8: d\n")
+        open(os.path.join(root, "STATUS.md"), "w", encoding="utf-8").write("STATUS: in-progress\nTask F2-9/10 ✔ abc123 ok\nTask 7 — no work\n")
+        tasks, impl = serve.plan_part(root, dict(plan="plan.md", progress="STATUS.md"), "")
+        assert [t["done"] for t in tasks] == [True, True, True, False]
+        assert tasks[0]["sha"] == "abc123" and impl["state"] == "in-progress"
+
+
 if __name__ == "__main__":
+    test_progress_lines_cover_merged_and_skipped_tasks()
     test_unregistered_tabs_of_one_lead_form_one_board()
     test_tab_claims_follow_continuation_suffix_only()
     test_latest_dispatch_wins_and_old_report_is_stale()
