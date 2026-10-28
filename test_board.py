@@ -49,7 +49,21 @@ def test_progress_lines_cover_merged_and_skipped_tasks():
         assert tasks[0]["sha"] == "abc123" and impl["state"] == "in-progress"
 
 
+def test_ac_table_groups_statuses_and_sections():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        open(os.path.join(root, "BOARD.md"), "w", encoding="utf-8").write(
+            "## Other\n| **G9** | | | | | | | |\n| 10001 | AC1 | c | h | q | m | | PASS |\n"
+            "## Rows\n| **G1** | | | | | | | |\n| 10001 | AC1 | c | h | q | m | | PASS (with note) |\n"
+            "| **Backfill** | | | | | | | |\n| 10001 | AC2 | c | h | q | m | | backfill running |\n| 10001 | AC3 | c | h | q | m | | — |\n"
+            "## Not built\n| 10002 | AC1 | c | h | — | — | — | N |\n")
+        board = dict(root=root, sources=dict(ac_table=dict(file="BOARD.md", sections={"## Rows": None, "## Not built": "NB"}, empty="EMPTY", other="OTHER")),
+                     statuses=[dict(id="PASS", prefix=["PASS"]), dict(id="BF", match=["backfill"])])
+        rows = serve.ac_rows(board)
+        assert [(r["ac"], r["group"], r["status"]) for r in rows] == [("AC1", "G1", "PASS"), ("AC2", "Backfill", "BF"), ("AC3", "Backfill", "EMPTY"), ("AC1", "—", "NB")]
+
+
 if __name__ == "__main__":
+    test_ac_table_groups_statuses_and_sections()
     test_progress_lines_cover_merged_and_skipped_tasks()
     test_unregistered_tabs_of_one_lead_form_one_board()
     test_tab_claims_follow_continuation_suffix_only()

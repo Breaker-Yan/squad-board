@@ -75,22 +75,39 @@
       "label": "pass",
       "color": "pass",
       "done": true,
-      "pass": true
+      "pass": true,
+      "prefix": [
+        "PASS"
+      ]
     },
     {
       "id": "FAIL",
       "label": "fail",
       "color": "fail",
-      "done": true
+      "done": true,
+      "match": [
+        "FAIL"
+      ]
     },
     {
       "id": "PENDING",
       "label": "not reported",
-      "color": "idle"
+      "color": "idle",
+      "match": [
+        "not run"
+      ]
     }
   ],
   "sources": {
     "issues": "acceptance/issues/I-*.json",
-    "pending": "acceptance/pending.json"
+    "pending": "acceptance/pending.json",
+    "ac_table": {
+      "file": "acceptance/BOARD.md",
+      "sections": {
+        "## Rows (in scope)": null
+      },
+      "empty": "PENDING",
+      "other": "PENDING"
+    }
   }
 }

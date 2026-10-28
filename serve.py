@@ -1,6 +1,5 @@
 import glob
 import hashlib
-import importlib.util
 import json
 import os
 import re
@@ -20,14 +19,14 @@ STALE_MINUTES = 20
 FILE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json; charset=utf-8",
               ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
 STATUS_LINE = re.compile(r"STATUS:\s*([A-Za-z-]+)\s*(.*)")
-SHOT = re.compile(r"[\w./-]*shots/[\w.\-一-鿿]+\.png")
+SHOT = re.compile(r"[\w./*-]*shots/[\w.*\-一-鿿]+\.png")
+AC_COLUMNS = ["card", "ac", "cat", "how", "qa", "qam", "issue", "final"]
 STATUS_ZH = {"working": "进行中", "idle": "空闲", "done": "完成", "blocked": "等待输入"}
 
 state = {"version": "", "data": {}}
 events = {}
 activity = {}
 layouts = {}
-legacy_modules = {}
 lock = threading.Lock()
 changed = threading.Condition(lock)
 
@@ -78,16 +77,7 @@ def report_status(root, patterns):
     return next((s for s in found if s["state"] != "done"), found[0])
 
 
-def legacy_module(report_dir):
-    if report_dir not in legacy_modules:
-        spec = importlib.util.spec_from_file_location(f"legacy_{len(legacy_modules)}", os.path.join(report_dir, "build_report.py"))
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        legacy_modules[report_dir] = module
-    return legacy_modules[report_dir]
-
-
-def legacy_evidence(root, round_dir, groups):
+def report_evidence(root, round_dir, groups):
     found = {}
     for group in groups:
         path = os.path.join(round_dir, group, "REPORT.md")
@@ -104,16 +94,48 @@ def legacy_evidence(root, round_dir, groups):
     return found
 
 
+def classify(text, statuses, fallback):
+    text = text.strip()
+    for status in statuses:
+        if any(text.startswith(p) for p in status.get("prefix", [])) or any(m in text for m in status.get("match", [])):
+            return status["id"]
+    return fallback
+
+
+def cell_shots(root, base, cells):
+    found = []
+    for token in (t for c in cells for t in SHOT.findall(c)):
+        found += [os.path.relpath(f, root) for f in sorted(glob.glob(os.path.join(base, token))) if os.path.isfile(f)]
+    return found
+
+
 def ac_rows(board):
-    report_dir = board.get("sources", {}).get("legacy_report_dir")
-    if not report_dir:
+    spec = board.get("sources", {}).get("ac_table")
+    path = os.path.join(board["root"], spec["file"]) if spec else ""
+    if not spec or not os.path.isfile(path):
         return []
-    report_dir = os.path.join(board["root"], report_dir)
-    rows = legacy_module(report_dir).board_rows()
-    shots = legacy_evidence(board["root"], os.path.dirname(report_dir), board.get("groups", []))
-    for row in rows:
-        row["status"] = row.pop("bucket")
-        row["shots"] = shots.get(f"{row['card']}|{row['ac']}", [])
+    base, columns, sections = os.path.dirname(path), spec.get("columns", AC_COLUMNS), spec["sections"]
+    key = re.compile(spec.get("key", r"\d{5}"))
+    statuses = board.get("statuses", [])
+    report_shots = report_evidence(board["root"], base, board.get("groups", []))
+    rows, section, group = [], None, "—"
+    for line in open(path, encoding="utf-8"):
+        if line.startswith("## "):
+            section, group = next((k for k in sections if line.startswith(k)), None), "—"
+            continue
+        if section is None or not line.startswith("|"):
+            continue
+        cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if re.fullmatch(r"\*\*(.+)\*\*", cells[0]):
+            group = cells[0].strip("*")
+            continue
+        if len(cells) < len(columns) or not key.fullmatch(cells[0]):
+            continue
+        row = dict(zip(columns, cells), group=group)
+        final = row["final"]
+        row["status"] = sections[section] or (spec.get("empty", "") if final in ("", "—") else classify(final, statuses, spec.get("other", "")))
+        row["shots"] = list(dict.fromkeys(report_shots.get(f"{row['card']}|{row['ac']}", []) + cell_shots(board["root"], base, cells)))
+        rows.append(row)
     return rows
 
 

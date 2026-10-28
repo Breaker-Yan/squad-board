@@ -64,9 +64,17 @@ printf '{"worker":"%s","brief":"%s","report":"%s","at":%s}\n' \
 
 The last line per worker wins. A report older than its dispatch shows as "not updated", and becomes a "needs you" item once the worker goes idle.
 
-## Legacy adapter
+## AC table
 
-`sources.legacy_report_dir` points to a directory containing a `build_report.py` that exposes `board_rows()`; the board imports that file to fill the acceptance table. Because it is imported and executed, only point it at code you trust. It exists until a structured `results.json` contract replaces it.
+`sources.ac_table` reads acceptance rows from a Markdown table:
+
+```json
+"ac_table": {"file": "acceptance/BOARD.md",
+             "sections": {"## Rows (in scope)": null, "## Rows (not built)": "NOT_BUILT"},
+             "empty": "PENDING", "other": "OTHER"}
+```
+
+Only rows under the listed `## ` headings count; a section mapped to a status id forces that status. A row is `| card | ac | cat | how | qa | qam | issue | final |` (override with `columns`, key regex with `key`); a bold first cell such as `| **G1** |` starts a group. The `final` text picks the first status, in `statuses` order, whose `prefix` it starts with or whose `match` it contains; empty text maps to `empty`, anything unmatched to `other`. Screenshot paths (`…/shots/….png`, globs allowed) in any cell are shown as evidence.
 
 ## Files
 
