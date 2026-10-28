@@ -134,6 +134,10 @@ button.chip { cursor: pointer; color: var(--ink); }
 .cat-list { display: grid; gap: 6px; margin-top: 8px; }
 .cat-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: var(--panel-2); border-radius: 8px; padding: 8px 12px; }
 .cat-item .name { font-weight: 600; }
+.archives .cat-item a.name { color: var(--ink); text-decoration: none; }
+.archives .cat-item a.name:hover { color: var(--accent); }
+.archives summary { cursor: pointer; }
+.archives[open] summary { margin-bottom: 12px; }
 .cat-item .sub { font-size: 12px; color: var(--muted); }
 .cat-item > .chip.sub { margin-left: auto; }
 .chip.new { color: var(--accent); border-color: var(--accent); }
@@ -275,16 +279,19 @@ const STATUS_ZH = { working: "进行中", idle: "空闲", done: "完成", blocke
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const tokenOf = (board, id) => (board && board.statuses || []).find(s => s.id === id)?.color || FIXED[id] || "muted";
 const col = (board, id) => `var(--${tokenOf(board, id)})`;
-const boardKey = b => `${b.session}/${b.id}`;
+const boardKey = b => b.archive ? `archive:${b.archive}` : `${b.session}/${b.id}`;
 let STATE = null, view = null, firstRender = true;
 const seenEvents = new Set();
 
 function allBoards() { return (STATE?.sessions || []).flatMap(s => s.boards); }
 function route() {
+  const a = location.hash.match(/^#\/a\/([^?]+)(?:\?w=(.+))?$/);
+  if (a) return { archive: decodeURIComponent(a[1]), worker: a[2] ? decodeURIComponent(a[2]) : "" };
   const m = location.hash.match(/^#\/b\/([^/]+)\/([^?]+)(?:\?w=(.+))?$/);
   return m ? { session: decodeURIComponent(m[1]), id: decodeURIComponent(m[2]), worker: m[3] ? decodeURIComponent(m[3]) : "" } : null;
 }
-const boardHref = (b, worker) => `#/b/${encodeURIComponent(b.session)}/${encodeURIComponent(b.id)}${worker ? `?w=${encodeURIComponent(worker)}` : ""}`;
+const boardHref = (b, worker) => `${b.archive ? `#/a/${encodeURIComponent(b.archive)}` : `#/b/${encodeURIComponent(b.session)}/${encodeURIComponent(b.id)}`}${worker ? `?w=${encodeURIComponent(worker)}` : ""}`;
+const fmtTime = ts => new Date(ts * 1000).toLocaleString("zh-CN", { hour12: false });
 const ago = ts => {
   if (!ts) return "";
   const m = Math.floor((Date.now() / 1000 - ts) / 60);
@@ -350,7 +357,7 @@ function needsList(items, board, withBoardTag) {
   const sorted = [...items].sort((a, b) => (a.level !== "fail") - (b.level !== "fail"));
   return sorted.length ? `<ul>${sorted.map(n => { const b = n.board || board; return `<li><a class="go" href="${boardHref(b, n.worker)}">
       <i class="dot" style="background:var(--${FIXED[n.level]})"></i>${withBoardTag ? `<span class="tag mono">${esc(b.name)}</span>` : ""}<span>${esc(n.text)}</span>
-      <span class="where mono">${esc([n.tab ? mainline(b, n.tab) : "", n.worker].filter(Boolean).join(" › "))}</span></a>${n.pane ? focusBtn(b.session, n.pane, n.worker || "无名 agent") : ""}</li>`; }).join("")}</ul>`
+      <span class="where mono">${esc([n.tab ? mainline(b, n.tab) : "", n.worker].filter(Boolean).join(" › "))}</span></a>${n.pane && !b.archived ? focusBtn(b.session, n.pane, n.worker || "无名 agent") : ""}</li>`; }).join("")}</ul>`
     : `<div class="empty">现在没有需要你处理的事。</div>`;
 }
 const boardRank = b => b.offline ? 4 : (b.needs || []).length ? 0 : (b.workers || []).some(w => w.status === "working") ? 1 : (b.workers || []).length ? 2 : 3;
@@ -370,6 +377,17 @@ function unsubscribe(b) {
     allBoards().filter(x => x.session === b.session && boardKey(x) !== boardKey(b)).forEach(x => subs.add(boardKey(x)));
   }
 }
+
+function archiveList() {
+  const list = STATE.archives || [];
+  if (!list.length) return "";
+  return `<details class="panel archives" ${archivesOpen ? "open" : ""}><summary><h2 style="display:inline">已归档 · ${list.length}</h2></summary>
+    <div class="cat-list">${list.map(a => `<div class="cat-item"><a class="name" href="#/a/${encodeURIComponent(a.archive)}">${esc(a.name)}</a>
+      <span class="sub mono">${esc(a.session)} · 归档于 ${esc(fmtTime(a.archived_at))}${a.graded ? ` · 通过率 ${Math.floor(a.passed / a.graded * 100)}%` : ""}${a.tasks ? ` · Task ${a.tasks_done}/${a.tasks}` : ""} · ${a.workers} worker</span>
+      <button type="button" class="chip sub" data-restore="${esc(a.archive)}">恢复</button></div>`).join("")}</div></details>`;
+}
+let archivesOpen = false;
+document.addEventListener("toggle", e => { if (e.target.classList?.contains("archives")) archivesOpen = e.target.open; }, true);
 
 function renderOverview() {
   document.getElementById("title").textContent = "Squad 看板";
@@ -413,7 +431,7 @@ function renderOverview() {
       <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
         ${subs.has(wildcard(s.name)) ? subBtn("data-unsub-session", s.name, "取消订阅 session") : ""}</div>
       ${[...bs].sort((a, b) => boardRank(a) - boardRank(b)).map(row).join("")}</section>`).join("")}
-    ${catalog}` : `<section class="panel"><h2>还没有订阅任何看板</h2><div class="muted">在下面选择要看的看板，或者订阅整个 session。只有订阅的看板会出现在总览和「需要你」里。</div></section>${catalog}`;
+    ${catalog}${archiveList()}` : `<section class="panel"><h2>还没有订阅任何看板</h2><div class="muted">在下面选择要看的看板，或者订阅整个 session。只有订阅的看板会出现在总览和「需要你」里。</div></section>${catalog}${archiveList()}`;
   document.getElementById("catalog")?.addEventListener("toggle", e => { catalogOpen = e.target.open; });
 }
 function toggleSubscription(b) { isSubscribed(b) ? unsubscribe(b) : subs.add(boardKey(b)); saveSet(SUB_KEY, subs); }
@@ -483,7 +501,7 @@ let shown = [];
 function renderBoardShell(b) {
   ["app", "crumb"].forEach(id => renderedHTML.delete(document.getElementById(id)));
   document.getElementById("title").textContent = b.name;
-  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>`;
+  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
   document.getElementById("app").innerHTML = `
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
@@ -608,7 +626,7 @@ function renderAgents(b) {
     const rep = w.report;
     return `<div class="agent ${esc(w.status)} ${flagged.has(w.name) || !w.name ? "flag" : ""} ${w.name && w.name === focus ? "focus" : ""}" data-w="${esc(w.name)}">
       <div class="row1"><span class="light"></span><span class="role">${esc(w.role)}</span><span class="st">${esc(STATUS_ZH[w.status] || w.status)}</span></div>
-      <div class="meta">${w.pane ? focusBtn(b.session, w.pane, w.role) : ""}<span class="mono">${esc(w.name || "无名")}</span>${w.tab !== mainline(b, w.tab) ? `<span class="mono">· ${esc(w.tab.slice(mainline(b, w.tab).length))}</span>` : ""}
+      <div class="meta">${w.pane && !b.archived ? focusBtn(b.session, w.pane, w.role) : ""}<span class="mono">${esc(w.name || "无名")}</span>${w.tab !== mainline(b, w.tab) ? `<span class="mono">· ${esc(w.tab.slice(mainline(b, w.tab).length))}</span>` : ""}
         ${mine.length ? `<button type="button" class="chip ac-group mono" data-group="${esc(w.group)}" title="AC 表只看 ${esc(w.group)} 组">AC ${mine.filter(r => doneIds.has(r.status)).length}/${mine.length}</button>` : ""}</div>
       ${w.task ? `<div class="rep" title="${esc(w.task.brief)}">任务 ${fileLink(b, w.task.brief_href, w.task.brief.split("/").pop() || "—")} · 派于 ${esc(ago(w.task.at))}</div>`
         : w.name ? `<div class="rep">未登记任务</div>` : ""}
@@ -690,7 +708,7 @@ function showRailNew() {
   feed.addEventListener("click", e => {
     const el = e.target.closest("[data-ev-kind]");
     if (!el || e.target.closest("summary")) return;
-    const { evBoard, evKind, evRef } = el.dataset, b = allBoards().find(x => boardKey(x) === evBoard && !x.offline);
+    const { evBoard, evKind, evRef } = el.dataset, b = current() && boardKey(current()) === evBoard ? current() : allBoards().find(x => boardKey(x) === evBoard && !x.offline);
     if (!b) return;
     if (current() && boardKey(current()) === evBoard) return runEvent(b, evKind, evRef);
     if (evKind !== "worker" && evKind !== "report") pendingEvent = { board: evBoard, kind: evKind, ref: evRef };
@@ -756,7 +774,43 @@ function openAc(b, r) {
 }
 document.getElementById("dlg-close").addEventListener("click", () => dlg.close());
 
-function current() { const r = route(); return r && allBoards().find(b => b.session === r.session && b.id === r.id && !b.offline); }
+const archived = {};
+function current() {
+  const r = route();
+  if (r?.archive) { if (!archived[r.archive]) loadArchive(r.archive); return archived[r.archive] || null; }
+  return r && allBoards().find(b => b.session === r.session && b.id === r.id && !b.offline);
+}
+const archiveLoading = new Set();
+function loadArchive(id) {
+  if (archiveLoading.has(id)) return;
+  archiveLoading.add(id);
+  fetch(`/api/archive?id=${encodeURIComponent(id)}`).then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(snap => { archived[id] = { ...snap, archived: true }; render(true); })
+    .catch(() => { toast("这份归档已经不在了"); location.hash = "#/"; })
+    .finally(() => archiveLoading.delete(id));
+}
+async function postJSON(url, body) {
+  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  return res.ok ? { ok: true, data: await res.json() } : { ok: false, error: await res.text() };
+}
+document.addEventListener("click", async e => {
+  const arc = e.target.closest("[data-archive-board]"), rst = e.target.closest("[data-restore]");
+  if (!arc && !rst) return;
+  e.preventDefault();
+  if (arc) {
+    const b = current(); if (!b) return;
+    if (!confirm(`归档「${b.name}」？\n\n会保存此刻的完整快照（AC、缺陷、计划、worker、动态），并从总览移到「已归档」。之后可以随时恢复。`)) return;
+    const res = await postJSON("/api/archive", { session: b.session, board: b.id });
+    if (!res.ok) return toast(`归档失败：${esc(res.error)}`);
+    toast(`已归档「${esc(b.name)}」`); location.hash = `#/a/${encodeURIComponent(res.data.archive)}`;
+  } else {
+    const id = rst.dataset.restore;
+    if (!confirm("恢复这块看板？快照会被删除，看板重新回到总览。")) return;
+    const res = await postJSON("/api/restore", { archive: id });
+    if (!res.ok) return toast(`恢复失败：${esc(res.error)}`);
+    delete archived[id]; toast("已恢复，几秒后出现在总览"); location.hash = "#/";
+  }
+});
 
 function render(routeChanged) {
   if (!STATE?.sessions) return;
@@ -770,6 +824,7 @@ function render(routeChanged) {
   put(document.getElementById("needs")).innerHTML = needsList(needs, b);
   document.getElementById("ok-badge").hidden = needs.length > 0;
   document.getElementById("sub-here").textContent = isSubscribed(b) ? "★ 已订阅 · 取消" : "☆ 订阅这块看板";
+  document.getElementById("sub-here").hidden = !!b.archived;
   renderAgents(b); renderRail(); renderSide(b); renderCards(b); renderTable(b);
   if (scrollToFocus) {
     scrollToFocus = false;

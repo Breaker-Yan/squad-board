@@ -3,16 +3,19 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REGISTRY = os.path.abspath(sys.argv[1] if len(sys.argv) > 1 else os.environ.get("SQUAD_BOARD_HOME", os.path.expanduser("~/.squad-board")))
 EVENTS_DIR = os.path.join(REGISTRY, ".state")
+ARCHIVE_DIR = os.path.join(REGISTRY, ".archive")
+LOCAL_CLIENTS = ("127.0.0.1", "::1")
 HOST = os.environ.get("SQUAD_BOARD_HOST", "127.0.0.1")
 PORT_RANGE = range(8790, 8800)
 STALE_MINUTES = 20
@@ -360,7 +363,7 @@ def snapshot():
         views = [board_snapshot(session, b, agents, tabs) for b in boards] + [dict(b["view"], auto=True) for b in guessed]
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
-    return dict(sessions=sessions)
+    return dict(sessions=sessions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
 
 
 def keyed(items, key, value):
@@ -482,6 +485,89 @@ def board_root(session, board_id):
     for board in load_boards().get(session, []):
         if board["id"] == board_id:
             return os.path.realpath(board["root"])
+    archived = next((a for a in list_archives() if a["session"] == session and a["id"] == board_id and a.get("root")), None)
+    return os.path.realpath(archived["root"]) if archived else None
+
+
+def read_jsonl(path):
+    out = []
+    for line in open(path, encoding="utf-8") if os.path.exists(path) else []:
+        try:
+            out.append(json.loads(line))
+        except ValueError:
+            pass
+    return out
+
+
+def archive_summary(view, archive, root):
+    statuses = {s["id"]: s for s in view.get("statuses", [])}
+    flag = lambda r, k: statuses.get(r["status"], {}).get(k)
+    counted = [r for r in view.get("rows", []) if not flag(r, "exclude")]
+    graded = [r for r in counted if not flag(r, "na")]
+    plans = view.get("plans", [])
+    return dict(archive=archive, session=view["session"], id=view["id"], name=view["name"], subtitle=view.get("subtitle", ""),
+                root=root, archived_at=int(time.time()), workers=len(view.get("workers", [])), issues=len(view.get("issues", [])),
+                rows=len(counted), graded=len(graded) if any(s.get("pass") for s in statuses.values()) else 0,
+                passed=sum(1 for r in graded if flag(r, "pass")),
+                tasks=sum(p["tasks"] for p in plans if p.get("tracked")), tasks_done=sum(p["done"] for p in plans if p.get("tracked")))
+
+
+def archive_board(session, board_id):
+    registration = os.path.join(REGISTRY, session, f"{board_id}.json")
+    view = next((b for s in state["data"].get("sessions", []) if s["name"] == session for b in s["boards"] if b["id"] == board_id), None)
+    if not view or view.get("auto") or view.get("offline") or not os.path.isfile(registration):
+        return None
+    archive = f"{session}/{board_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    dest = os.path.join(ARCHIVE_DIR, archive)
+    os.makedirs(dest)
+    history = read_jsonl(events_path(session, board_id))
+    root = json.load(open(registration, encoding="utf-8")).get("root", "")
+    summary = archive_summary(view, archive, root)
+    json.dump(dict(view, events=list(reversed(history))[:1000], archive=archive, archived=True, archived_at=summary["archived_at"]),
+              open(os.path.join(dest, "snapshot.json"), "w", encoding="utf-8"), ensure_ascii=False)
+    json.dump(summary, open(os.path.join(dest, "summary.json"), "w", encoding="utf-8"), ensure_ascii=False)
+    shutil.move(registration, os.path.join(dest, "board.json"))
+    for src, name in ((os.path.join(REGISTRY, session, f"{board_id}.dispatch.jsonl"), "dispatch.jsonl"), (events_path(session, board_id), "events.jsonl")):
+        if os.path.exists(src):
+            shutil.move(src, os.path.join(dest, name))
+    events.pop((session, board_id), None)
+    return archive
+
+
+def archive_dir(archive):
+    base = os.path.realpath(ARCHIVE_DIR)
+    full = os.path.realpath(os.path.join(base, archive))
+    return full if full.startswith(base + os.sep) and os.path.isfile(os.path.join(full, "summary.json")) else None
+
+
+def list_archives():
+    found = []
+    for path in glob.glob(os.path.join(ARCHIVE_DIR, "*", "*", "summary.json")):
+        try:
+            found.append(json.load(open(path, encoding="utf-8")))
+        except ValueError:
+            continue
+    return sorted(found, key=lambda a: -a["archived_at"])
+
+
+def restore_board(archive):
+    src = archive_dir(archive)
+    if not src:
+        return "没有这份归档"
+    summary = json.load(open(os.path.join(src, "summary.json"), encoding="utf-8"))
+    session, board_id = summary["session"], summary["id"]
+    registration = os.path.join(REGISTRY, session, f"{board_id}.json")
+    if os.path.exists(registration):
+        return "同名看板已经重新登记，先处理它再恢复"
+    os.makedirs(os.path.dirname(registration), exist_ok=True)
+    shutil.move(os.path.join(src, "board.json"), registration)
+    for name, dest in (("dispatch.jsonl", os.path.join(REGISTRY, session, f"{board_id}.dispatch.jsonl")), ("events.jsonl", events_path(session, board_id))):
+        if os.path.exists(os.path.join(src, name)) and not os.path.exists(dest):
+            os.makedirs(os.path.dirname(dest), exist_ok=True)
+            shutil.move(os.path.join(src, name), dest)
+    shutil.rmtree(src)
+    if not os.listdir(os.path.dirname(src)):
+        os.rmdir(os.path.dirname(src))
     return None
 
 
@@ -506,22 +592,42 @@ class Handler(BaseHTTPRequestHandler):
             return self.stream()
         if path.startswith("/files/"):
             return self.file(unquote(path[len("/files/"):]))
+        if path == "/api/archive":
+            src = archive_dir(parse_qs(urlparse(self.path).query).get("id", [""])[0])
+            if not src:
+                return self.send(404, "没有这份归档".encode(), "text/plain; charset=utf-8")
+            return self.send(200, open(os.path.join(src, "snapshot.json"), "rb").read(), "application/json; charset=utf-8")
         self.send(404, b"not found", "text/plain")
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/focus":
+        path = urlparse(self.path).path
+        if path not in ("/api/focus", "/api/archive", "/api/restore"):
             return self.send(404, b"not found", "text/plain")
-        if self.client_address[0] not in ("127.0.0.1", "::1"):
-            return self.send(403, "只能在本机定位 herdr pane".encode(), "text/plain; charset=utf-8")
+        if self.client_address[0] not in LOCAL_CLIENTS:
+            return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
         try:
             body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)))
-            session, pane = body["session"], body["pane"]
-        except (ValueError, KeyError, TypeError):
+            if not isinstance(body, dict):
+                raise TypeError
+        except (ValueError, TypeError):
             return self.send(400, b"bad request", "text/plain")
-        if not focusable(session, pane):
-            return self.send(404, "这个 pane 已经不在了".encode(), "text/plain; charset=utf-8")
-        ok = '"focused":true' in run(["herdr", "--session", session, "agent", "focus", pane], timeout=10).replace(" ", "")
-        self.send(200 if ok else 502, json.dumps(dict(ok=ok, session=session), ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        reply = lambda code, data: self.send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        if path == "/api/focus":
+            session, pane = body.get("session", ""), body.get("pane", "")
+            if not focusable(session, pane):
+                return self.send(404, "这个 pane 已经不在了".encode(), "text/plain; charset=utf-8")
+            ok = '"focused":true' in run(["herdr", "--session", session, "agent", "focus", pane], timeout=10).replace(" ", "")
+            return reply(200 if ok else 502, dict(ok=ok, session=session))
+        with lock:
+            if path == "/api/archive":
+                archive = archive_board(body.get("session", ""), body.get("board", ""))
+                if not archive:
+                    return self.send(404, "这块看板不能归档（未登记或已不在）".encode(), "text/plain; charset=utf-8")
+                return reply(200, dict(archive=archive))
+            error = restore_board(body.get("archive", ""))
+            if error:
+                return self.send(409, error.encode(), "text/plain; charset=utf-8")
+            return reply(200, dict(ok=True))
 
     def stream(self):
         self.send_response(200)

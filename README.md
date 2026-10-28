@@ -5,7 +5,7 @@ A local, zero-dependency live board for multi-agent squads running in [herdr](ht
 One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, and a "needs you" list (blocked workers, stale reports, vanished workers, pending questions). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
 
 - Python 3 standard library only, no install step
-- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. The only action is **⤢ focus**: switch herdr's focus to a worker pane, accepted from loopback only
+- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a worker pane, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
 - Serves files only from each board's `root`, with an extension allowlist
 - Binds `127.0.0.1` by default
 
@@ -76,6 +76,10 @@ The last line per worker wins. A report older than its dispatch shows as "not up
 
 Only rows under the listed `## ` headings count; a section mapped to a status id forces that status. A row is `| card | ac | cat | how | qa | qam | issue | final |` (override with `columns`, key regex with `key`); a bold first cell such as `| **G1** |` starts a group. The `final` text picks the first status, in `statuses` order, whose `prefix` it starts with or whose `match` it contains; empty text maps to `empty`, anything unmatched to `other`. Screenshot paths (`…/shots/….png`, globs allowed) in any cell are shown as evidence.
 
+## Archiving a board
+
+When a squad is done, press **归档** on its board (or `curl -X POST 127.0.0.1:8790/api/archive -d '{"session":"<herdr session>","board":"<board id>"}'`). The board's current state — AC rows, issues, plans and tasks, last worker status, the full event log — is saved under `~/.squad-board/.archive/<session>/<board>-<time>/`, and its declaration, dispatch log and events move there too, so it leaves the overview. Archived boards are listed at the bottom of the overview and open as a read-only snapshot; **恢复** moves everything back. Evidence links still point at the original files under the board's `root`. Only declared boards can be archived; archive and restore, like focus, accept loopback requests only.
+
 ## Files
 
 | Path | Content |
@@ -83,6 +87,7 @@ Only rows under the listed `## ` headings count; a section mapped to a status id
 | `~/.squad-board/<session>/<id>.json` | board declaration |
 | `~/.squad-board/<session>/<id>.dispatch.jsonl` | dispatch log |
 | `~/.squad-board/.state/` | event history written by the board |
+| `~/.squad-board/.archive/` | archived board snapshots |
 | `~/.squad-board/server.log` | launchd log |
 
 ## Check

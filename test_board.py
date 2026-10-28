@@ -62,7 +62,31 @@ def test_ac_table_groups_statuses_and_sections():
         assert [(r["ac"], r["group"], r["status"]) for r in rows] == [("AC1", "G1", "PASS"), ("AC2", "Backfill", "BF"), ("AC3", "Backfill", "EMPTY"), ("AC1", "—", "NB")]
 
 
+def test_archive_and_restore_round_trip():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as home:
+        serve.REGISTRY, serve.EVENTS_DIR, serve.ARCHIVE_DIR = home, os.path.join(home, ".state"), os.path.join(home, ".archive")
+        os.makedirs(os.path.join(home, "s"))
+        registration = os.path.join(home, "s", "b.json")
+        json.dump(dict(name="B", root=home, tabs=["W·B"]), open(registration, "w", encoding="utf-8"))
+        os.makedirs(os.path.join(home, ".state", "s"))
+        open(serve.events_path("s", "b"), "w", encoding="utf-8").write(json.dumps(dict(kind="worker", text="x", at="1")) + "\n")
+        view = dict(id="b", session="s", name="B", statuses=[dict(id="P", pass_=True)], rows=[], plans=[], workers=[], issues=[])
+        serve.state["data"] = dict(sessions=[dict(name="s", boards=[view])])
+        archive = serve.archive_board("s", "b")
+        assert archive and not os.path.exists(registration) and not os.path.exists(serve.events_path("s", "b"))
+        assert [a["archive"] for a in serve.list_archives()] == [archive]
+        snap = json.load(open(os.path.join(serve.archive_dir(archive), "snapshot.json")))
+        assert snap["events"][0]["text"] == "x" and snap["archived_at"] > 0
+        assert serve.board_root("s", "b") == os.path.realpath(home)
+        assert serve.archive_dir("../../etc") is None
+        assert serve.restore_board(archive) is None
+        assert os.path.exists(registration) and os.path.exists(serve.events_path("s", "b")) and serve.list_archives() == []
+        assert not os.path.exists(os.path.join(serve.ARCHIVE_DIR, "s"))
+        assert serve.archive_board("s", "missing") is None
+
+
 if __name__ == "__main__":
+    test_archive_and_restore_round_trip()
     test_ac_table_groups_statuses_and_sections()
     test_progress_lines_cover_merged_and_skipped_tasks()
     test_unregistered_tabs_of_one_lead_form_one_board()
