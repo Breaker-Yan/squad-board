@@ -41,6 +41,8 @@ a { color: inherit; }
 .feed li.grp summary span:last-child::after { content: " ▸"; color: var(--muted); }
 .feed li.grp details[open] summary span:last-child::after { content: " ▾"; }
 .feed.sub { margin: 0 0 6px 18px; padding-left: 8px; border-left: 1px solid var(--line); overflow: visible; min-height: 0; }
+.feed li.evlink { cursor: pointer; }
+.feed li.evlink:hover { background: var(--panel-2); }
 .feed .tag { color: var(--accent); font-size: 11.5px; }
 .items li.plan { display: block; }
 .issue-row { cursor: pointer; border-radius: 6px; padding: 4px; margin: -4px; }
@@ -534,6 +536,24 @@ const phaseView = b => p => {
   return p;
 };
 const openPlans = new Set();
+const EVENT_TARGET = { worker: "worker", report: "worker", ac: "AC", issue: "缺陷", plan: "子计划" };
+const eventRef = e => e.worker || (e.card && e.ac ? `${e.card}|${e.ac}` : "") || e.issue || e.plan || "";
+let pendingEvent = null;
+function runEvent(b, kind, ref) {
+  if (kind === "worker" || kind === "report") {
+    if (route()?.worker !== ref) { location.hash = boardHref(b, ref); return; }
+    document.querySelector(`.agent[data-w="${CSS.escape(ref)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  } else if (kind === "ac") {
+    const [card, ac] = ref.split("|"), row = (b.rows || []).find(r => r.card === card && r.ac === ac);
+    if (row) openAc(b, row);
+  } else if (kind === "issue") {
+    openIssue(b, ref);
+  } else if (kind === "plan") {
+    const key = `${boardKey(b)}|${ref}`;
+    openPlans.add(key); renderSide(b);
+    document.querySelector(`details[data-plan="${CSS.escape(key)}"]`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
 function planItem(b, p) {
   const share = p.tasks ? p.done / p.tasks : 0, key = `${boardKey(b)}|${p.id}`;
   const impl = p.impl ? `<span class="pill" style="color:var(--${p.impl.state === "done" ? "pass" : p.impl.state === "blocked" ? "fail" : "info"})" title="${esc(p.impl.detail)}">实现 ${esc(p.impl.state)}</span>` : "";
@@ -639,7 +659,8 @@ function renderRail() {
     const key = boardKey(e.b) + e.at + e.text, fresh = !firstRender && !seenEvents.has(key);
     if (fresh) freshCount++;
     seenEvents.add(key);
-    return `<li class="${fresh ? "fresh" : ""}"><span class="t mono">${esc(e.at)}</span><i class="dot" style="background:${col(e.b, e.color)}"></i><span>${e.tagged ? `<span class="tag mono">${esc(e.b.name)}</span> ` : ""}${esc(e.text)}</span></li>`;
+    const ref = eventRef(e);
+    return `<li class="${fresh ? "fresh" : ""}${ref ? " evlink" : ""}"${ref ? ` data-ev-board="${esc(boardKey(e.b))}" data-ev-kind="${esc(e.kind)}" data-ev-ref="${esc(ref)}" title="跳到对应的${esc(EVENT_TARGET[e.kind] || "对象")}"` : ""}><span class="t mono">${esc(e.at)}</span><i class="dot" style="background:${col(e.b, e.color)}"></i><span>${e.tagged ? `<span class="tag mono">${esc(e.b.name)}</span> ` : ""}${esc(e.text)}</span></li>`;
   };
   const out = [];
   for (let i = 0; i < list.length; i++) {
@@ -666,6 +687,15 @@ function showRailNew() {
   feed.addEventListener("mouseenter", () => { railHover = true; });
   feed.addEventListener("mouseleave", () => { railHover = false; });
   feed.addEventListener("scroll", () => { if (feed.scrollTop < 30 && railPending) { railPending = 0; showRailNew(); } });
+  feed.addEventListener("click", e => {
+    const el = e.target.closest("[data-ev-kind]");
+    if (!el || e.target.closest("summary")) return;
+    const { evBoard, evKind, evRef } = el.dataset, b = allBoards().find(x => boardKey(x) === evBoard && !x.offline);
+    if (!b) return;
+    if (current() && boardKey(current()) === evBoard) return runEvent(b, evKind, evRef);
+    if (evKind !== "worker" && evKind !== "report") pendingEvent = { board: evBoard, kind: evKind, ref: evRef };
+    location.hash = boardHref(b, evKind === "worker" || evKind === "report" ? evRef : "");
+  });
   feed.addEventListener("toggle", e => { const k = e.target.dataset?.g; if (k) e.target.open ? openGroups.add(k) : openGroups.delete(k); }, true);
   railPart("rail-new").addEventListener("click", () => { railPending = 0; showRailNew(); feed.scrollTo({ top: 0, behavior: "smooth" }); });
   railPart("rail-kinds").addEventListener("click", e => {
@@ -714,8 +744,8 @@ function renderTable(b) {
 }
 
 const dlg = document.getElementById("dlg");
-function openRow(b, i) {
-  const r = shown[i]; if (!r) return;
+function openRow(b, i) { if (shown[i]) openAc(b, shown[i]); }
+function openAc(b, r) {
   document.getElementById("dlg-title").textContent = `${r.card} ${r.ac} · ${r.final}`;
   const fileUrl = s => fileHref(b, s);
   document.getElementById("dlg-body").innerHTML = `<div><b>${esc(r.cat)}</b> · ${esc(r.how)} · 组 ${esc(r.group)}</div>
@@ -746,6 +776,7 @@ function render(routeChanged) {
     const el = route()?.worker && document.querySelector(`.agent[data-w="${CSS.escape(route().worker)}"]`);
     el ? el.scrollIntoView({ block: "center" }) : scrollTo(0, 0);
   }
+  if (pendingEvent && pendingEvent.board === key) { const { kind, ref } = pendingEvent; pendingEvent = null; runEvent(b, kind, ref); }
   firstRender = false;
 }
 addEventListener("hashchange", () => { firstRender = true; scrollToFocus = true; render(true); });

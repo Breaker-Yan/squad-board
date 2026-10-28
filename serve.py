@@ -378,30 +378,30 @@ def diff_board(old, new):
             continue
         status, seq, report = prev
         if status != w["status"]:
-            out.append(dict(kind="worker", color=w["status"], text=f"{w['role']}：{STATUS_ZH.get(status, status)} → {STATUS_ZH.get(w['status'], w['status'])}"))
+            out.append(dict(kind="worker", color=w["status"], worker=w["name"], text=f"{w['role']}：{STATUS_ZH.get(status, status)} → {STATUS_ZH.get(w['status'], w['status'])}"))
         elif seq is not None and w["seq"] is not None and w["seq"] - seq >= 2:
-            out.append(dict(kind="worker", color="warn", text=f"{w['role']}：两次轮询之间状态变过 {w['seq'] - seq} 次，现在{STATUS_ZH.get(w['status'], w['status'])}"))
+            out.append(dict(kind="worker", color="warn", worker=w["name"], text=f"{w['role']}：两次轮询之间状态变过 {w['seq'] - seq} 次，现在{STATUS_ZH.get(w['status'], w['status'])}"))
         new_report = (w["report"] or {}).get("state")
         if report and new_report and report != new_report:
-            out.append(dict(kind="report", color="blocked" if new_report == "blocked" else "info", text=f"{w['role']} 报告：{report} → {new_report}"))
+            out.append(dict(kind="report", color="blocked" if new_report == "blocked" else "info", worker=w["name"], text=f"{w['role']} 报告：{report} → {new_report}"))
     gone = {m["name"] for m in new["missing"]} - {m["name"] for m in old["missing"]}
-    out += [dict(kind="worker", color="fail", text=f"{n} 从 herdr 消失") for n in sorted(gone)]
+    out += [dict(kind="worker", color="fail", worker=n, text=f"{n} 从 herdr 消失") for n in sorted(gone)]
     before = keyed(old["rows"], lambda r: (r["card"], r["ac"]), lambda r: r["final"])
     for r in new["rows"]:
         prev = before.get((r["card"], r["ac"]))
         if prev is not None and prev != r["final"]:
-            out.append(dict(kind="ac", color=r["status"], text=f"{r['card']} {r['ac']}：{prev} → {r['final']}"))
+            out.append(dict(kind="ac", color=r["status"], card=r["card"], ac=r["ac"], text=f"{r['card']} {r['ac']}：{prev} → {r['final']}"))
     before = keyed(old["issues"], lambda i: i["id"], lambda i: i["status"])
     for i in new["issues"]:
         if before.get(i["id"]) != i["status"]:
-            out.append(dict(kind="issue", color=i["status"], text=f"{i['id']} {(i['title'] or '')[:40]}：{before.get(i['id'], '新建')} → {i['status']}"))
+            out.append(dict(kind="issue", color=i["status"], issue=i["id"], text=f"{i['id']} {(i['title'] or '')[:40]}：{before.get(i['id'], '新建')} → {i['status']}"))
     before = keyed(old["plans"], lambda p: p["id"], lambda p: (p["state"], p.get("done", 0)))
     for p in new["plans"]:
         prev = before.get(p["id"])
         if prev and prev[0] != p["state"]:
-            out.append(dict(kind="plan", color="info", text=f"子计划 {p['id']}：{prev[0]} → {p['state']}"))
+            out.append(dict(kind="plan", color="info", plan=p["id"], text=f"子计划 {p['id']}：{prev[0]} → {p['state']}"))
         if prev and p["tracked"] and prev[1] != p["done"]:
-            out.append(dict(kind="plan", color="pass" if p["done"] == p["tasks"] else "info", text=f"子计划 {p['id']} 实现：{prev[1]} → {p['done']}/{p['tasks']} Task"))
+            out.append(dict(kind="plan", color="pass" if p["done"] == p["tasks"] else "info", plan=p["id"], text=f"子计划 {p['id']} 实现：{prev[1]} → {p['done']}/{p['tasks']} Task"))
     return out
 
 
