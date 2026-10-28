@@ -509,10 +509,31 @@ def assign_workers(boards, agents, tabs, workspaces):
     return owned, by_story, loose
 
 
+RECENT_SECONDS = 24 * 3600
+
+
+def story_activity(story):
+    marks = [os.path.join(story, f) for f in ("docs/AC.md", "AC.md", "docs/CLOSEOUT.md", "CLOSEOUT.md")]
+    marks += glob.glob(os.path.join(story, "demos", "*"))
+    times = [os.path.getmtime(f) for f in marks if os.path.isfile(f)]
+    return max(times) if times else 0
+
+
+def recent_stories(workspaces, shown):
+    found = []
+    for workspace in workspaces:
+        base = os.path.realpath(os.path.expanduser(workspace))
+        for story in sorted(glob.glob(os.path.join(base, "*"))):
+            if os.path.isdir(story) and story not in shown and time.time() - story_activity(story) < RECENT_SECONDS:
+                found.append(story)
+    return found
+
+
 def snapshot():
     sessions = []
     registered = load_boards()
     workspaces = load_config().get("workspaces", [])
+    shown = set()
     for session in sorted(set(registered) | set(running_sessions())):
         boards = registered.get(session, [])
         layout = read_layout(session)
@@ -527,6 +548,12 @@ def snapshot():
         if loose and len(by_story) == 1 and len(leads) == 1:
             next(iter(by_story.values())).extend(loose)
             loose = []
+        board_stories = {story_of(b.get("root", ""), workspaces) for b in boards}
+        for lead in leads:
+            story = story_of(agent_dir(lead), workspaces)
+            if story and story not in board_stories:
+                by_story.setdefault(story, [])
+        shown |= board_stories | set(by_story)
         views = [board_snapshot(session, b, owned[b["id"]], tabs, exact=True) for b in boards]
         views += [dict(board_snapshot(session, story_board(story, members, tabs), members, tabs, exact=True), auto=True)
                   for story, members in sorted(by_story.items())]
@@ -534,6 +561,10 @@ def snapshot():
             views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
+    idle = recent_stories(workspaces, shown)
+    if idle:
+        sessions.append(dict(name="工作区（无 herdr 会话）", alive=True,
+                             boards=[dict(board_snapshot("workspace", story_board(story, [], {}), [], {}, exact=True), auto=True) for story in idle]))
     return dict(sessions=sessions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
 
 

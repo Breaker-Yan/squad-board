@@ -164,7 +164,21 @@ def test_report_follows_newer_status_file_in_same_folder():
         assert got["file"] == "G2/REPORT-NEXT.md" and got["state"] == "done" and got["followed"]
 
 
+def test_recent_story_without_agents_is_found():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as ws:
+        for story in ("TASK-3/docs", "OLD-4/docs", "EMPTY-5"):
+            os.makedirs(os.path.join(ws, story))
+        open(os.path.join(ws, "TASK-3", "docs", "AC.md"), "w", encoding="utf-8").write("| AC | 最终状态 |\n")
+        old = os.path.join(ws, "OLD-4", "docs", "AC.md")
+        open(old, "w", encoding="utf-8").write("| AC | 最终状态 |\n")
+        os.utime(old, (1000, 1000))
+        base = os.path.realpath(ws)
+        assert [os.path.basename(s) for s in serve.recent_stories([ws], set())] == ["TASK-3"]
+        assert serve.recent_stories([ws], {os.path.join(base, "TASK-3")}) == []
+
+
 if __name__ == "__main__":
+    test_recent_story_without_agents_is_found()
     test_report_follows_newer_status_file_in_same_folder()
     test_only_workers_gone_mid_task_need_attention()
     test_conventional_ac_file_needs_no_config()

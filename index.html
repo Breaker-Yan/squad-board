@@ -639,6 +639,10 @@ function renderHero(b) {
 
 function renderAgents(b) {
   const box = document.getElementById("agents");
+  if (!(b.workers || []).length && !(b.missing || []).length && b.auto) {
+    put(box).innerHTML = `<div class="panel empty-board">这个 story 目前没有 worker 在跑（lead 自己做的，或已收工）。</div>`;
+    return;
+  }
   if (!(b.workers || []).length && !(b.missing || []).length) {
     put(box).innerHTML = `<div class="panel empty-board">认领了 ${b.claimed.map(t => `<span class="chip mono">${esc(t)}</span>`).join(" ")}，但 herdr 里还没有这些 tab。lead 开出 W· tab 并起 worker 后，这里会自动出现。</div>`;
     return;
