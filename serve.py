@@ -20,7 +20,10 @@ HOST = os.environ.get("SQUAD_BOARD_HOST", "127.0.0.1")
 PORT_RANGE = range(8790, 8800)
 STALE_MINUTES = 20
 FILE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json; charset=utf-8",
-              ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8"}
+              ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+              ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
+VIDEO_TYPES = (".mp4", ".webm", ".mov")
+RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
 STATUS_LINE = re.compile(r"STATUS:\s*([A-Za-z-]+)\s*(.*)")
 SHOT = re.compile(r"[\w./*-]*shots/[\w.*\-一-鿿]+\.png")
 AC_COLUMNS = ["card", "ac", "cat", "how", "qa", "qam", "issue", "final"]
@@ -171,6 +174,21 @@ def issues(board):
     return out
 
 
+def demos(board):
+    pattern = board.get("sources", {}).get("demos")
+    if not pattern:
+        return None
+    root, tags = board["root"], set(board.get("cards", {})) | {p["id"] for p in board.get("plans", [])}
+    found = []
+    for path in globbed(root, pattern):
+        if os.path.splitext(path)[1].lower() not in VIDEO_TYPES or not root_rel(root, path):
+            continue
+        stem = os.path.splitext(os.path.basename(path))[0]
+        found.append(dict(file=root_rel(root, path), title=stem, size=os.path.getsize(path), mtime=int(os.path.getmtime(path)),
+                          tags=[t for t in re.split(r"[-_ .]+", stem) if t in tags]))
+    return sorted(found, key=lambda d: -d["mtime"])
+
+
 def pending(board):
     path = board.get("sources", {}).get("pending")
     try:
@@ -302,7 +320,8 @@ def board_snapshot(session, board, agents, tabs, exact=None):
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
                 statuses=board.get("statuses", []), phases=board.get("phases", []), workers=workers,
                 missing=[dict(name=n, role=s.get("role", n)) for n, s in declared.items() if n not in present],
-                rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board))
+                rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board),
+                demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
     data["needs"] = needs(data)
     return data
 
@@ -653,8 +672,38 @@ class Handler(BaseHTTPRequestHandler):
         ctype = FILE_TYPES.get(os.path.splitext(full)[1].lower())
         if not root or not full.startswith(root + os.sep) or not ctype or not os.path.isfile(full):
             return self.send(404, b"not found", "text/plain")
-        self.send(200, open(full, "rb").read(), ctype)
-
+        size = os.path.getsize(full)
+        start, end, code = 0, size - 1, 200
+        match = RANGE.match(self.headers.get("Range", ""))
+        if match and size:
+            first, last = match.groups()
+            start, end = (int(first), min(int(last), size - 1) if last else size - 1) if first else (max(size - int(last or 0), 0), size - 1)
+            if start > end:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            code = 206
+        self.send_response(code)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Length", str(end - start + 1 if size else 0))
+        self.send_header("Cache-Control", "no-store")
+        if code == 206:
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        self.end_headers()
+        try:
+            with open(full, "rb") as fh:
+                fh.seek(start)
+                left = end - start + 1 if size else 0
+                while left > 0:
+                    chunk = fh.read(min(left, 1 << 16))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    left -= len(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            return
 
 def bind():
     for port in PORT_RANGE:

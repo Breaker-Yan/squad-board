@@ -76,6 +76,10 @@ The last line per worker wins. A report older than its dispatch shows as "not up
 
 Only rows under the listed `## ` headings count; a section mapped to a status id forces that status. A row is `| card | ac | cat | how | qa | qam | issue | final |` (override with `columns`, key regex with `key`); a bold first cell such as `| **G1** |` starts a group. The `final` text picks the first status, in `statuses` order, whose `prefix` it starts with or whose `match` it contains; empty text maps to `empty`, anything unmatched to `other`. Screenshot paths (`…/shots/….png`, globs allowed) in any cell are shown as evidence.
 
+## MVP demos
+
+Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4", "demos/*.webm", "demos/*.mov"]`. Videos show up in an **MVP 演示** panel within seconds, newest first, and play in place with seeking (files are streamed with HTTP Range). A file whose name starts with a card code or plan id (`29217-void-all.mp4`, `F1_dispute.mov`) is tagged and gets a **▶ 演示** badge on that card tile and plan. Live updates never reload a playing video. Archived snapshots keep the list and link the original files.
+
 ## Archiving a board
 
 When a squad is done, press **归档** on its board (or `curl -X POST 127.0.0.1:8790/api/archive -d '{"session":"<herdr session>","board":"<board id>"}'`). The board's current state — AC rows, issues, plans and tasks, last worker status, the full event log — is saved under `~/.squad-board/.archive/<session>/<board>-<time>/`, and its declaration, dispatch log and events move there too, so it leaves the overview. Archived boards are listed at the bottom of the overview and open as a read-only snapshot; **恢复** moves everything back. Evidence links still point at the original files under the board's `root`. Only declared boards can be archived; archive and restore, like focus, accept loopback requests only.

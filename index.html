@@ -45,6 +45,13 @@ a { color: inherit; }
 .feed li.evlink:hover { background: var(--panel-2); }
 .feed .tag { color: var(--accent); font-size: 11.5px; }
 .items li.plan { display: block; }
+.demos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
+.demo { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.demo video, .dlg-body video { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #000; }
+.demo figcaption { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 13px; }
+.demo figcaption .s { color: var(--muted); font-size: 12px; margin-left: auto; }
+.demo-badge { margin-left: 8px; font-size: 11.5px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 999px; padding: 0 7px; cursor: pointer; }
+.demo-badge:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .issue-row { cursor: pointer; border-radius: 6px; padding: 4px; margin: -4px; }
 .issue-row:hover { background: var(--panel-2); }
 .card[data-card] { font: inherit; color: inherit; text-align: left; cursor: pointer; }
@@ -507,6 +514,7 @@ function renderBoardShell(b) {
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
     <section class="panel needs" aria-labelledby="h-needs" id="needs-sec"><h2 id="h-needs">需要你</h2><div id="needs"></div></section>
     <section aria-labelledby="h-agents"><h2 id="h-agents">Workers · 按 W· tab</h2><div id="agents"></div></section>
+    <section class="panel" aria-labelledby="h-demos" id="demos-sec" hidden><h2 id="h-demos">MVP 演示</h2><div id="demos"></div></section>
     <div class="side-grid" id="side"></div>
     ${hasRows && cards.length > 1 ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
     ${hasRows ? `<section class="panel" aria-labelledby="h-table"><h2 id="h-table">逐条 AC（点击查看截图与核对意见）</h2>
@@ -583,7 +591,7 @@ function planItem(b, p) {
   return `<li class="plan"><details data-plan="${esc(key)}" ${openPlans.has(key) ? "open" : ""}><summary>
       <div class="what"><b class="mono">${esc(p.id)}</b> <span class="s">${esc(p.repo)} · ${esc(p.scope)}</span>
         ${p.tracked ? `<div class="pbar"><span style="width:${share * 100}%"></span></div><div class="s mono">实现 ${p.done}/${p.tasks} Task</div>` : p.tasks ? `<div class="s mono">${p.tasks} Task · 未配置进度文件</div>` : ""}</div>
-      <span class="pills">${planPill}${impl}</span></summary>
+      <span class="pills">${demoBadge(b, p.id)}${planPill}${impl}</span></summary>
       <div class="plan-files s">${(p.files || []).map(f => `${f.label && (p.files || []).length > 1 ? `<b class="mono">${esc(f.label)}</b> ` : ""}计划 ${f.plan.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "—"} · 进度 ${f.progress.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "未配置"}`).join("<br>")}</div>
       ${p.task_list.length ? `<ul class="tasks">${rows}</ul>` : `<div class="s">计划里没有 ### Task 段落。</div>`}</details></li>`;
 }
@@ -737,13 +745,39 @@ function renderSide(b) {
   put(side).innerHTML = parts.join(""); side.hidden = !parts.length;
 }
 
+const fmtSize = n => n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
+const demosFor = (b, tag) => (b.demos || []).filter(d => d.tags.includes(tag));
+const demoBadge = (b, tag) => demosFor(b, tag).length ? `<span class="demo-badge" data-demo-tag="${esc(tag)}" role="button" tabindex="0" title="播放 ${esc(tag)} 的演示">▶ 演示 ${demosFor(b, tag).length}</span>` : "";
+const demoFigure = (b, d, autoplay) => `<figure class="demo"><video controls preload="metadata" ${autoplay ? "autoplay" : ""} src="${fileHref(b, d.file)}"></video>
+  <figcaption><b>${esc(d.title)}</b>${d.tags.map(t => ` <span class="chip mono">${esc(t)}</span>`).join("")}<span class="s mono">${esc(fmtTime(d.mtime))} · ${fmtSize(d.size)}</span></figcaption></figure>`;
+function renderDemos(b) {
+  const sec = document.getElementById("demos-sec");
+  sec.hidden = b.demos == null;
+  if (b.demos == null) return;
+  document.getElementById("h-demos").textContent = `MVP 演示 · ${b.demos.length}`;
+  put(document.getElementById("demos")).innerHTML = b.demos.length ? `<div class="demos-grid">${b.demos.map(d => demoFigure(b, d, false)).join("")}</div>`
+    : `<div class="muted">还没有演示视频。把录好的 mp4 / webm / mov 放进看板 root 下的 <span class="mono">${esc(b.demo_dir || ".")}/</span>，几秒内就会出现在这里；文件名用卡号或子计划 id 开头（如 <span class="mono">29217-void-all.mp4</span>），会自动挂到对应的卡片和子计划上。</div>`;
+}
+function openDemos(b, tag) {
+  const list = demosFor(b, tag); if (!list.length) return;
+  document.getElementById("dlg-title").textContent = `${tag} · MVP 演示（${list.length}）`;
+  document.getElementById("dlg-body").innerHTML = list.map((d, i) => demoFigure(b, d, i === 0)).join("");
+  dlg.showModal();
+}
+document.addEventListener("click", e => {
+  const t = e.target.closest("[data-demo-tag]"); if (!t) return;
+  e.preventDefault(); e.stopPropagation();
+  const b = current(); if (b) openDemos(b, t.dataset.demoTag);
+}, true);
+document.getElementById("dlg").addEventListener("close", e => e.target.querySelectorAll("video").forEach(v => v.pause()));
+
 function renderCards(b) {
   const box = document.getElementById("cards"); if (!box) return;
   put(box).innerHTML = Object.entries(b.cards).map(([code, name]) => {
     const all = (b.rows || []).filter(r => r.card === code), rows = counted({ ...b, rows: all });
-    if (rows.length) return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></button>`;
+    if (rows.length) return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span><span class="name">${esc(name)}</span><div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></button>`;
     const chips = (b.plans || []).filter(p => (p.covers || []).includes(code)).map(p => { const st = p.tracked ? progressState(p.done, p.tasks) : p.state === "done" ? "done" : "now"; return `<span class="pill mono" style="color:var(--${st === "done" ? "pass" : st === "now" ? "info" : "muted"})">${esc(p.id)} ${p.tracked ? `${p.done}/${p.tasks}` : p.state === "done" ? "✓" : "…"}</span>`; }).join(" ");
-    return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}</span><span class="name">${esc(name)}</span><div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></button>`;
+    return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span><span class="name">${esc(name)}</span><div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></button>`;
   }).join("");
 }
 
@@ -825,7 +859,7 @@ function render(routeChanged) {
   document.getElementById("ok-badge").hidden = needs.length > 0;
   document.getElementById("sub-here").textContent = isSubscribed(b) ? "★ 已订阅 · 取消" : "☆ 订阅这块看板";
   document.getElementById("sub-here").hidden = !!b.archived;
-  renderAgents(b); renderRail(); renderSide(b); renderCards(b); renderTable(b);
+  renderAgents(b); renderRail(); renderDemos(b); renderSide(b); renderCards(b); renderTable(b);
   if (scrollToFocus) {
     scrollToFocus = false;
     const el = route()?.worker && document.querySelector(`.agent[data-w="${CSS.escape(route().worker)}"]`);

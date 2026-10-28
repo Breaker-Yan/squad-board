@@ -85,7 +85,19 @@ def test_archive_and_restore_round_trip():
         assert serve.archive_board("s", "missing") is None
 
 
+def test_demos_list_videos_and_tag_by_filename():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        os.makedirs(os.path.join(root, "demos"))
+        for name in ("29217-void-all.mp4", "F1_dispute.webm", "notes.md", "misc.mov"):
+            open(os.path.join(root, "demos", name), "wb").write(b"x")
+        board = dict(root=root, cards={"29217": "Void"}, plans=[dict(id="F1")], sources=dict(demos=["demos/*"]))
+        got = {d["title"]: d["tags"] for d in serve.demos(board)}
+        assert got == {"29217-void-all": ["29217"], "F1_dispute": ["F1"], "misc": []}
+        assert serve.demos(dict(root=root, sources={})) is None
+
+
 if __name__ == "__main__":
+    test_demos_list_videos_and_tag_by_filename()
     test_archive_and_restore_round_trip()
     test_ac_table_groups_statuses_and_sections()
     test_progress_lines_cover_merged_and_skipped_tasks()

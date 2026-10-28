@@ -108,6 +108,11 @@
       },
       "empty": "PENDING",
       "other": "PENDING"
-    }
+    },
+    "demos": [
+      "demos/*.mp4",
+      "demos/*.webm",
+      "demos/*.mov"
+    ]
   }
 }
