@@ -78,7 +78,11 @@ Only rows under the listed `## ` headings count; a section mapped to a status id
 
 ## MVP demos
 
-Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4", "demos/*.webm", "demos/*.mov"]`. Videos show up in an **MVP 演示** panel within seconds, newest first, and play in place with seeking (files are streamed with HTTP Range). A file whose name starts with a card code or plan id (`29217-void-all.mp4`, `F1_dispute.mov`) is tagged and gets a **▶ 演示** badge on that card tile and plan. Live updates never reload a playing video. Archived snapshots keep the list and link the original files.
+Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4", "demos/*.webm", "demos/*.mov"]`. Videos show up in an **MVP 演示** panel within seconds, newest first, and play in place with seeking (files are streamed with HTTP Range). A file whose name starts with a card code or plan id (`29217-void-all.mp4`, `F1_dispute.mov`) is tagged and gets a **▶ 演示** badge on that card tile and plan. A `<video>.chapters.json` next to a video (`[{"t": seconds, "label": "AC1 …", "result": "PASS"}]`) is listed under it; clicking a chapter seeks there. Live updates never reload a playing video. Archived snapshots keep the list and link the original files.
+
+## Closeout
+
+Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-progress | done`, `- [x]` / `- [ ]` checklist items, and `## ` sections holding Markdown tables (e.g. deleted / kept / undecided). The board shows a **收尾** panel with checklist progress and the tables, logs status changes in the feed, and a phase `{"label": "收尾", "auto": "closeout"}` turns green once it is done. Archived boards keep the closeout state.
 
 ## Archiving a board
 

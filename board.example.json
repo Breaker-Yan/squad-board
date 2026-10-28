@@ -32,6 +32,10 @@
     {
       "label": "Accept",
       "state": ""
+    },
+    {
+      "label": "Closeout",
+      "auto": "closeout"
     }
   ],
   "plans": [
@@ -113,6 +117,7 @@
       "demos/*.mp4",
       "demos/*.webm",
       "demos/*.mov"
-    ]
+    ],
+    "closeout": "CLOSEOUT.md"
   }
 }

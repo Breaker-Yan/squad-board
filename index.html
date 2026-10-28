@@ -17,6 +17,7 @@
 }
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
+section, .panel, .agent, details, h2 { scroll-margin-top: 88px; }
 html, body { margin: 0; }
 body { background: var(--bg); color: var(--ink); font: 14px/1.5 var(--font-body);
   padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px; }
@@ -45,15 +46,28 @@ a { color: inherit; }
 .feed li.evlink:hover { background: var(--panel-2); }
 .feed .tag { color: var(--accent); font-size: 11.5px; }
 .items li.plan { display: block; }
+.checklist { list-style: none; margin: 0 0 10px; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.checklist .mark { display: inline-block; width: 20px; color: var(--muted); }
+.checklist li.done .mark { color: var(--pass); }
+.closeout-tables { display: grid; gap: 6px; margin-bottom: 8px; }
+.closeout-tables summary { cursor: pointer; font-size: 13px; }
+table.mini { min-width: 0; font-size: 12px; margin: 6px 0; }
+table.mini td { padding: 3px 6px; }
 .demos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; }
 .demo { margin: 0; display: grid; gap: 6px; min-width: 0; }
 .demo video, .dlg-body video { width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #000; }
 .demo figcaption { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; font-size: 13px; }
 .demo figcaption .s { color: var(--muted); font-size: 12px; margin-left: auto; }
+.chapters { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 180px; overflow-y: auto; }
+.chapter { font: inherit; font-size: 12.5px; color: var(--ink); background: transparent; border: 0; border-radius: 6px; padding: 3px 6px; width: 100%; text-align: left; cursor: pointer; }
+.chapter:hover { background: var(--panel-2); }
+.chapter .mono { color: var(--accent); margin-right: 6px; }
 .demo-badge { margin-left: 8px; font-size: 11.5px; color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line)); border-radius: 999px; padding: 0 7px; cursor: pointer; }
 .demo-badge:hover { background: color-mix(in srgb, var(--accent) 18%, transparent); }
 .issue-row { cursor: pointer; border-radius: 6px; padding: 4px; margin: -4px; }
 .issue-row:hover { background: var(--panel-2); }
+.issue-row.closed { opacity: .55; }
+.issue-row.closed:hover { opacity: 1; }
 .card[data-card] { font: inherit; color: inherit; text-align: left; cursor: pointer; }
 .card[data-card]:hover { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .card[aria-pressed="true"] { border-color: var(--accent); }
@@ -335,6 +349,7 @@ function barHtml(board, rows) {
 }
 const isUnclosed = i => !["verified", "rejected"].includes(i.status);
 const openIssues = b => (b.issues || []).filter(isUnclosed).length;
+const issueUrgency = i => ({ open: 0, reopened: 0, fixing: 1, deployed: 2 })[i.status] ?? 1;
 let issuesOpenOnly = false;
 
 const focusBtn = (session, pane, who) => `<button type="button" class="chip focus-btn" data-focus-session="${esc(session)}" data-focus-pane="${esc(pane)}" data-focus-who="${esc(who)}" title="在 herdr 里切到这个 pane">⤢ 定位</button>`;
@@ -390,7 +405,7 @@ function archiveList() {
   if (!list.length) return "";
   return `<details class="panel archives" ${archivesOpen ? "open" : ""}><summary><h2 style="display:inline">已归档 · ${list.length}</h2></summary>
     <div class="cat-list">${list.map(a => `<div class="cat-item"><a class="name" href="#/a/${encodeURIComponent(a.archive)}">${esc(a.name)}</a>
-      <span class="sub mono">${esc(a.session)} · 归档于 ${esc(fmtTime(a.archived_at))}${a.graded ? ` · 通过率 ${Math.floor(a.passed / a.graded * 100)}%` : ""}${a.tasks ? ` · Task ${a.tasks_done}/${a.tasks}` : ""} · ${a.workers} worker</span>
+      <span class="sub mono">${esc(a.session)} · 归档于 ${esc(fmtTime(a.archived_at))}${a.graded ? ` · 通过率 ${Math.floor(a.passed / a.graded * 100)}%` : ""}${a.tasks ? ` · Task ${a.tasks_done}/${a.tasks}` : ""}${a.demos ? ` · ▶ ${a.demos} 演示` : ""}${a.closed_out ? " · ✅ 已收尾" : ""} · ${a.workers} worker</span>
       <button type="button" class="chip sub" data-restore="${esc(a.archive)}">恢复</button></div>`).join("")}</div></details>`;
 }
 let archivesOpen = false;
@@ -420,7 +435,7 @@ function renderOverview() {
       <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</div></div>
       <div>${share === null ? `<div class="sub">${Object.keys(b.cards || {}).length ? `${Object.keys(b.cards).length} 张卡 · 未配置 AC 数据源` : "未配置 AC 数据源"}</div>`
         : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${(r => `${r.pct} ${r.label}${r.note ? ` · ${r.note.split(" · ")[0]}` : ""}`)(ringStats(b))} · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
-        ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}</div>`}</div>
+        ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}${(b.demos || []).length ? ` · ▶ ${b.demos.length} 演示` : ""}${b.closeout?.state === "done" ? " · ✅ 已收尾" : ""}</div>`}</div>
       <div class="last">${last ? `<span class="mono">${esc(ago(last.ts) || last.at)}</span> · ${esc(last.text)}` : "还没有动态"}</div></a>${off}</div>`;
   };
   const mySessions = sessions.map(s => ({ s, bs: s.boards.filter(isSubscribed) })).filter(x => x.bs.length);
@@ -512,9 +527,10 @@ function renderBoardShell(b) {
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
   document.getElementById("app").innerHTML = `
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
+    <section class="panel" aria-labelledby="h-demos" id="demos-sec" hidden><h2 id="h-demos">MVP 演示</h2><div id="demos"></div></section>
+    <section class="panel" aria-labelledby="h-closeout" id="closeout-sec" hidden><h2 id="h-closeout">收尾</h2><div id="closeout"></div></section>
     <section class="panel needs" aria-labelledby="h-needs" id="needs-sec"><h2 id="h-needs">需要你</h2><div id="needs"></div></section>
     <section aria-labelledby="h-agents"><h2 id="h-agents">Workers · 按 W· tab</h2><div id="agents"></div></section>
-    <section class="panel" aria-labelledby="h-demos" id="demos-sec" hidden><h2 id="h-demos">MVP 演示</h2><div id="demos"></div></section>
     <div class="side-grid" id="side"></div>
     ${hasRows && cards.length > 1 ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
     ${hasRows ? `<section class="panel" aria-labelledby="h-table"><h2 id="h-table">逐条 AC（点击查看截图与核对意见）</h2>
@@ -558,12 +574,13 @@ function implTotals(b) {
 const progressState = (done, total) => total && done === total ? "done" : done ? "now" : "";
 const phaseView = b => p => {
   if (p.auto === "impl") { const { done, total } = implTotals(b); return { label: `${p.label} ${done}/${total} Task`, state: progressState(done, total) }; }
+  if (p.auto === "closeout") { const c = b.closeout; return { label: p.label, state: c?.state === "done" ? "done" : c?.exists ? "now" : "" }; }
   if (p.auto === "plans") { const ps = b.plans || [], done = ps.filter(x => x.state === "done").length; return { label: `${p.label} ${done}/${ps.length}`, state: progressState(done, ps.length) }; }
   return p;
 };
 const openPlans = new Set();
-const EVENT_TARGET = { worker: "worker", report: "worker", ac: "AC", issue: "缺陷", plan: "子计划" };
-const eventRef = e => e.worker || (e.card && e.ac ? `${e.card}|${e.ac}` : "") || e.issue || e.plan || "";
+const EVENT_TARGET = { worker: "worker", report: "worker", ac: "AC", issue: "缺陷", plan: "子计划", closeout: "收尾" };
+const eventRef = e => e.worker || (e.card && e.ac ? `${e.card}|${e.ac}` : "") || e.issue || e.plan || (e.closeout ? "closeout" : "");
 let pendingEvent = null;
 function runEvent(b, kind, ref) {
   if (kind === "worker" || kind === "report") {
@@ -574,6 +591,8 @@ function runEvent(b, kind, ref) {
     if (row) openAc(b, row);
   } else if (kind === "issue") {
     openIssue(b, ref);
+  } else if (kind === "closeout") {
+    document.getElementById("closeout-sec")?.scrollIntoView({ behavior: "smooth", block: "center" });
   } else if (kind === "plan") {
     const key = `${boardKey(b)}|${ref}`;
     openPlans.add(key); renderSide(b);
@@ -651,7 +670,7 @@ function renderAgents(b) {
     + ((b.missing || []).length ? `<div class="tabgroup"><h3>不在 herdr 里</h3><div class="agents">${b.missing.map(m => `<div class="agent flag"><div class="row1"><span class="light"></span><span class="role">${esc(m.role)}</span><span class="st">消失</span></div><div class="meta mono">${esc(m.name)}</div></div>`).join("")}</div></div>` : "");
 }
 
-const KINDS = [["all", "全部"], ["worker", "worker"], ["report", "报告"], ["ac", "AC"], ["issue", "缺陷"], ["plan", "子计划"]];
+const KINDS = [["all", "全部"], ["worker", "worker"], ["report", "报告"], ["ac", "AC"], ["issue", "缺陷"], ["plan", "子计划"], ["closeout", "收尾"]];
 const GROUP_LABEL = { worker: "个 worker 状态变化", report: "份报告变化", ac: "条 AC 变化", issue: "个缺陷变化", plan: "个子计划变化" };
 const openGroups = new Set();
 let railKind = "all", railHover = false, railPending = 0;
@@ -734,10 +753,10 @@ function renderSide(b) {
   const list = (items, empty) => items.length ? items.join("") : `<li class="s">${empty}</li>`;
   const parts = [];
   if ((b.pending || []).length) parts.push(`<section class="panel" aria-label="等你确认"><h2>等你确认</h2><ul class="items">${list(b.pending.map(p => `<li><div class="what"><b class="mono">${esc(p.id)}</b> · ${esc(p.ac)}<div class="s">${esc(p.ask)}</div></div></li>`), "")}</ul></section>`);
-  const unclosed = (b.issues || []).filter(isUnclosed), shownIssues = issuesOpenOnly ? unclosed : (b.issues || []);
+  const unclosed = (b.issues || []).filter(isUnclosed).sort((x, y) => issueUrgency(x) - issueUrgency(y)), shownIssues = issuesOpenOnly ? unclosed : [...unclosed, ...(b.issues || []).filter(i => !isUnclosed(i))];
   if ((b.issues || []).length) parts.push(`<section class="panel" aria-label="缺陷与修复" id="issues-panel"><div class="panel-head"><h2>缺陷与修复</h2>
     <div class="filters" role="group" aria-label="缺陷筛选"><button type="button" class="chip" data-issues-filter="all" aria-pressed="${!issuesOpenOnly}">全部 <span class="mono">${b.issues.length}</span></button><button type="button" class="chip" data-issues-filter="open" aria-pressed="${issuesOpenOnly}">未关闭 <span class="mono">${unclosed.length}</span></button></div></div>
-    <ul class="items">${list(shownIssues.map(i => `<li class="issue-row" data-issue="${esc(i.id)}" tabindex="0" role="button" title="查看复现、期望、实际与证据"><div class="what"><b class="mono">${esc(i.id)}</b> ${esc(i.title)}<div class="s">${esc((i.acs || []).join("、"))} · ${esc(i.cause)} · 第 ${esc(i.round)} 轮${i.pr ? ` · PR ${esc(i.pr)}` : ""}${i.ci ? ` · CI ${esc(i.ci)}` : ""}</div></div><span class="pill" style="color:${col(b, i.status)}">${esc(i.status)}</span></li>`), "没有未关闭的缺陷")}</ul></section>`);
+    <ul class="items">${list(shownIssues.map(i => `<li class="issue-row ${isUnclosed(i) ? "" : "closed"}" data-issue="${esc(i.id)}" tabindex="0" role="button" title="查看复现、期望、实际与证据"><div class="what"><b class="mono">${esc(i.id)}</b> ${esc(i.title)}<div class="s">${esc((i.acs || []).join("、"))} · ${esc(i.cause)} · 第 ${esc(i.round)} 轮${i.pr ? ` · PR ${esc(i.pr)}` : ""}${i.ci ? ` · CI ${esc(i.ci)}` : ""}</div></div><span class="pill" style="color:${col(b, i.status)}">${esc(i.status)}</span></li>`), "没有未关闭的缺陷")}</ul></section>`);
   if ((b.plans || []).length) { const { done, total } = implTotals(b); parts.push(`<section class="panel plans-panel" aria-label="子计划与开发进度" id="plans-panel"><h2>子计划 · 开发进度${total ? ` <span class="mono" style="color:var(--accent)">${done}/${total} Task</span>` : ""}</h2><ul class="items">${b.plans.map(p => planItem(b, p)).join("")}</ul></section>`); }
   const side = document.getElementById("side");
   if (!side.dataset.wired) { side.dataset.wired = "1";
@@ -745,11 +764,18 @@ function renderSide(b) {
   put(side).innerHTML = parts.join(""); side.hidden = !parts.length;
 }
 
+const fmtClock = t => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+document.addEventListener("click", e => {
+  const c = e.target.closest("[data-seek]"); if (!c) return;
+  const v = c.closest("figure.demo")?.querySelector("video"); if (!v) return;
+  v.currentTime = Number(c.dataset.seek); v.play().catch(() => {});
+});
 const fmtSize = n => n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 const demosFor = (b, tag) => (b.demos || []).filter(d => d.tags.includes(tag));
 const demoBadge = (b, tag) => demosFor(b, tag).length ? `<span class="demo-badge" data-demo-tag="${esc(tag)}" role="button" tabindex="0" title="播放 ${esc(tag)} 的演示">▶ 演示 ${demosFor(b, tag).length}</span>` : "";
 const demoFigure = (b, d, autoplay) => `<figure class="demo"><video controls preload="metadata" ${autoplay ? "autoplay" : ""} src="${fileHref(b, d.file)}"></video>
-  <figcaption><b>${esc(d.title)}</b>${d.tags.map(t => ` <span class="chip mono">${esc(t)}</span>`).join("")}<span class="s mono">${esc(fmtTime(d.mtime))} · ${fmtSize(d.size)}</span></figcaption></figure>`;
+  <figcaption><b>${esc(d.title)}</b>${d.tags.map(t => ` <span class="chip mono">${esc(t)}</span>`).join("")}<span class="s mono">${esc(fmtTime(d.mtime))} · ${fmtSize(d.size)}</span></figcaption>
+  ${(d.chapters || []).length ? `<ol class="chapters">${d.chapters.map(c => `<li><button type="button" class="chapter" data-seek="${c.t}"><span class="mono">${fmtClock(c.t)}</span> ${esc(c.label)}${c.result ? ` <b style="color:var(--${FIXED[c.result.toLowerCase()] || (c.result === "PASS" ? "pass" : c.result === "FAIL" ? "fail" : "muted")})">${esc(c.result)}</b>` : ""}</button></li>`).join("")}</ol>` : ""}</figure>`;
 function renderDemos(b) {
   const sec = document.getElementById("demos-sec");
   sec.hidden = b.demos == null;
@@ -757,6 +783,19 @@ function renderDemos(b) {
   document.getElementById("h-demos").textContent = `MVP 演示 · ${b.demos.length}`;
   put(document.getElementById("demos")).innerHTML = b.demos.length ? `<div class="demos-grid">${b.demos.map(d => demoFigure(b, d, false)).join("")}</div>`
     : `<div class="muted">还没有演示视频。把录好的 mp4 / webm / mov 放进看板 root 下的 <span class="mono">${esc(b.demo_dir || ".")}/</span>，几秒内就会出现在这里；文件名用卡号或子计划 id 开头（如 <span class="mono">29217-void-all.mp4</span>），会自动挂到对应的卡片和子计划上。</div>`;
+}
+function renderCloseout(b) {
+  const c = b.closeout, sec = document.getElementById("closeout-sec");
+  sec.hidden = !c;
+  if (!c) return;
+  const done = (c.items || []).filter(i => i.done).length, total = (c.items || []).length;
+  document.getElementById("h-closeout").textContent = c.exists ? `收尾 · ${c.state === "done" ? "已完成" : c.state}${total ? ` · ${done}/${total}` : ""}` : "收尾 · 未开始";
+  put(document.getElementById("closeout")).innerHTML = !c.exists
+    ? `<div class="muted">还没收尾。任务进入 Ready For AC 后按 task-closeout 收尾，<span class="mono">${esc(c.file)}</span> 写出来就会显示在这里。</div>`
+    : `<ul class="checklist">${c.items.map(i => `<li class="${i.done ? "done" : ""}"><span class="mark">${i.done ? "✔" : "○"}</span>${esc(i.text)}</li>`).join("")}</ul>
+      <div class="closeout-tables">${Object.entries(c.tables || {}).map(([name, rows]) => `<details><summary><b>${esc(name)}</b> <span class="mono">${rows.length}</span></summary>
+        <table class="mini"><tbody>${rows.map(r => `<tr>${r.map(cell => `<td>${esc(cell)}</td>`).join("")}</tr>`).join("")}</tbody></table></details>`).join("")}</div>
+      <div class="s">记录：${fileLink(b, c.file, c.file.split("/").pop())}${c.mtime ? ` · ${esc(fmtTime(c.mtime))}` : ""}</div>`;
 }
 function openDemos(b, tag) {
   const list = demosFor(b, tag); if (!list.length) return;
@@ -859,7 +898,7 @@ function render(routeChanged) {
   document.getElementById("ok-badge").hidden = needs.length > 0;
   document.getElementById("sub-here").textContent = isSubscribed(b) ? "★ 已订阅 · 取消" : "☆ 订阅这块看板";
   document.getElementById("sub-here").hidden = !!b.archived;
-  renderAgents(b); renderRail(); renderDemos(b); renderSide(b); renderCards(b); renderTable(b);
+  renderAgents(b); renderRail(); renderDemos(b); renderCloseout(b); renderSide(b); renderCards(b); renderTable(b);
   if (scrollToFocus) {
     scrollToFocus = false;
     const el = route()?.worker && document.querySelector(`.agent[data-w="${CSS.escape(route().worker)}"]`);

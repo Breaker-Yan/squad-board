@@ -91,12 +91,26 @@ def test_demos_list_videos_and_tag_by_filename():
         for name in ("29217-void-all.mp4", "F1_dispute.webm", "notes.md", "misc.mov"):
             open(os.path.join(root, "demos", name), "wb").write(b"x")
         board = dict(root=root, cards={"29217": "Void"}, plans=[dict(id="F1")], sources=dict(demos=["demos/*"]))
+        open(os.path.join(root, "demos", "29217-void-all.chapters.json"), "w", encoding="utf-8").write(json.dumps([dict(t=1.5, label="AC1", result="PASS")]))
+        assert next(d for d in serve.demos(board) if d["title"] == "29217-void-all")["chapters"] == [dict(t=1.5, label="AC1", result="PASS")]
         got = {d["title"]: d["tags"] for d in serve.demos(board)}
         assert got == {"29217-void-all": ["29217"], "F1_dispute": ["F1"], "misc": []}
         assert serve.demos(dict(root=root, sources={})) is None
 
 
+def test_closeout_reads_status_checklist_and_tables():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        open(os.path.join(root, "CLOSEOUT.md"), "w", encoding="utf-8").write(
+            "STATUS: done\n\n# x\n\n- [x] merged\n- [ ] archive\n\n## 删除\n| 路径 | 类别 | 理由 |\n| :-- | :-- | :-- |\n| a/ | scratch | tmp |\n\n## 保留\n| 路径 | 理由 |\n| :-- | :-- |\n")
+        c = serve.closeout(dict(root=root, sources=dict(closeout="CLOSEOUT.md")))
+        assert c["state"] == "done" and [i["done"] for i in c["items"]] == [True, False]
+        assert c["tables"] == {"删除": [["a/", "scratch", "tmp"]]}
+        assert serve.closeout(dict(root=root, sources=dict(closeout="NOPE.md")))["exists"] is False
+        assert serve.closeout(dict(root=root, sources={})) is None
+
+
 if __name__ == "__main__":
+    test_closeout_reads_status_checklist_and_tables()
     test_demos_list_videos_and_tag_by_filename()
     test_archive_and_restore_round_trip()
     test_ac_table_groups_statuses_and_sections()

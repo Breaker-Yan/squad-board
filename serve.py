@@ -184,9 +184,39 @@ def demos(board):
         if os.path.splitext(path)[1].lower() not in VIDEO_TYPES or not root_rel(root, path):
             continue
         stem = os.path.splitext(os.path.basename(path))[0]
+        sidecar = os.path.splitext(path)[0] + ".chapters.json"
+        try:
+            chapters = [dict(t=float(c["t"]), label=str(c.get("label", "")), result=str(c.get("result", ""))) for c in json.load(open(sidecar, encoding="utf-8"))] if os.path.isfile(sidecar) else []
+        except (ValueError, KeyError, TypeError):
+            chapters = []
         found.append(dict(file=root_rel(root, path), title=stem, size=os.path.getsize(path), mtime=int(os.path.getmtime(path)),
-                          tags=[t for t in re.split(r"[-_ .]+", stem) if t in tags]))
+                          tags=[t for t in re.split(r"[-_ .]+", stem) if t in tags], chapters=chapters))
     return sorted(found, key=lambda d: -d["mtime"])
+
+
+CHECK_ITEM = re.compile(r"^- \[([ xX])\] (.+)$", re.M)
+
+
+def closeout(board):
+    rel = board.get("sources", {}).get("closeout")
+    if not rel:
+        return None
+    path = os.path.join(board["root"], rel)
+    if not os.path.isfile(path):
+        return dict(file=rel, exists=False)
+    text = open(path, encoding="utf-8").read()
+    tables, section = {}, None
+    for line in text.splitlines():
+        if line.startswith("## "):
+            section = line[3:].strip()
+            tables[section] = []
+        elif section and line.startswith("|") and not re.match(r"^\|\s*:?-", line):
+            tables[section].append([c.strip() for c in line.strip().strip("|").split("|")])
+    status = report_status(board["root"], rel)
+    return dict(file=root_rel(board["root"], rel) or rel, exists=True, state=status["state"] if status else "unknown",
+                detail=status["detail"] if status else "", mtime=int(os.path.getmtime(path)),
+                items=[dict(done=mark != " ", text=item) for mark, item in CHECK_ITEM.findall(text)],
+                tables={k: v[1:] for k, v in tables.items() if len(v) > 1})
 
 
 def pending(board):
@@ -320,7 +350,7 @@ def board_snapshot(session, board, agents, tabs, exact=None):
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
                 statuses=board.get("statuses", []), phases=board.get("phases", []), workers=workers,
                 missing=[dict(name=n, role=s.get("role", n)) for n, s in declared.items() if n not in present],
-                rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board),
+                rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board), closeout=closeout(board),
                 demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
     data["needs"] = needs(data)
     return data
@@ -424,6 +454,9 @@ def diff_board(old, new):
             out.append(dict(kind="plan", color="info", plan=p["id"], text=f"子计划 {p['id']}：{prev[0]} → {p['state']}"))
         if prev and p["tracked"] and prev[1] != p["done"]:
             out.append(dict(kind="plan", color="pass" if p["done"] == p["tasks"] else "info", plan=p["id"], text=f"子计划 {p['id']} 实现：{prev[1]} → {p['done']}/{p['tasks']} Task"))
+    before, after = (old.get("closeout") or {}).get("state"), (new.get("closeout") or {}).get("state")
+    if after and before != after:
+        out.append(dict(kind="closeout", color="pass" if after == "done" else "info", closeout=True, text=f"收尾：{before or '未开始'} → {after}"))
     return out
 
 
@@ -528,7 +561,8 @@ def archive_summary(view, archive, root):
                 root=root, archived_at=int(time.time()), workers=len(view.get("workers", [])), issues=len(view.get("issues", [])),
                 rows=len(counted), graded=len(graded) if any(s.get("pass") for s in statuses.values()) else 0,
                 passed=sum(1 for r in graded if flag(r, "pass")),
-                tasks=sum(p["tasks"] for p in plans if p.get("tracked")), tasks_done=sum(p["done"] for p in plans if p.get("tracked")))
+                tasks=sum(p["tasks"] for p in plans if p.get("tracked")), tasks_done=sum(p["done"] for p in plans if p.get("tracked")),
+                demos=len(view.get("demos") or []), closed_out=(view.get("closeout") or {}).get("state") == "done")
 
 
 def archive_board(session, board_id):
