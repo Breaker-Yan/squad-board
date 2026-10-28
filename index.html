@@ -782,7 +782,7 @@ function renderDemos(b) {
   if (b.demos == null) return;
   document.getElementById("h-demos").textContent = `MVP 演示 · ${b.demos.length}`;
   put(document.getElementById("demos")).innerHTML = b.demos.length ? `<div class="demos-grid">${b.demos.map(d => demoFigure(b, d, false)).join("")}</div>`
-    : `<div class="muted">还没有演示视频。把录好的 mp4 / webm / mov 放进看板 root 下的 <span class="mono">${esc(b.demo_dir || ".")}/</span>，几秒内就会出现在这里；文件名用卡号或子计划 id 开头（如 <span class="mono">29217-void-all.mp4</span>），会自动挂到对应的卡片和子计划上。</div>`;
+    : `<div class="muted">还没有演示视频。把录好的 mp4 / webm / mov 放进看板 root 下的 <span class="mono">${esc(b.demo_dir || ".")}/</span>，几秒内就会出现在这里；文件名用卡号或子计划 id 开头（如 <span class="mono">10001-void-all.mp4</span>），会自动挂到对应的卡片和子计划上。</div>`;
 }
 function renderCloseout(b) {
   const c = b.closeout, sec = document.getElementById("closeout-sec");

@@ -28,12 +28,24 @@ def test_latest_dispatch_wins_and_old_report_is_stale():
         assert any("还没写" in n["text"] for n in serve.needs(dict(workers=[view], missing=[], pending=[], issues=[])))
 
 
-def test_unregistered_tabs_of_one_lead_form_one_board():
-    agents = [dict(tab_id="t1", terminal_title_stripped="重构"), dict(name="a", tab_id="t7"), dict(name="b", tab_id="t8"), dict(name="c", tab_id="t9")]
-    tabs = {"t1": "1", "t7": "W·final", "t8": "W·root-tests", "t9": "W·final-2"}
-    boards = serve.auto_boards("s", agents, tabs, [])
-    assert len(boards) == 1 and boards[0]["name"] == "重构"
-    assert boards[0]["tabs"] == ["W·final", "W·root-tests"]
+def test_workers_group_by_tab_then_story_then_session():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as ws:
+        for d in ("PROJ-1/docs", "TASK-2/src"):
+            os.makedirs(os.path.join(ws, d))
+        tabs = {"t1": "1", "t2": "W·E2E", "t3": "W·UI-Fix", "t4": "W·final", "t5": "W·final-2", "t6": "W·sot"}
+        agents = [dict(tab_id="t1", terminal_title_stripped="重构"),
+                  dict(name="qa", tab_id="t2", cwd="/elsewhere"),
+                  dict(name="fe", tab_id="t3", cwd=os.path.join(ws, "PROJ-1")),
+                  dict(name="z", tab_id="t4", cwd="/home"), dict(name="y", tab_id="t5", cwd="/home"),
+                  dict(name="s1", tab_id="t6", foreground_cwd=os.path.join(ws, "TASK-2", "src"))]
+        boards = [dict(id="PROJ-1", root=os.path.join(ws, "PROJ-1", "docs"), tabs=["W·E2E"])]
+        owned, by_story, loose = serve.assign_workers(boards, agents, tabs, [ws])
+        assert [a["name"] for a in owned["PROJ-1"]] == ["qa", "fe"]
+        assert {os.path.basename(k): [a["name"] for a in v] for k, v in by_story.items()} == {"TASK-2": ["s1"]}
+        assert [a["name"] for a in loose] == ["z", "y"]
+        board = serve.session_board("s", loose, agents, tabs)
+        assert board["name"] == "重构" and board["tabs"] == ["W·final"]
+        assert serve.story_board(os.path.join(ws, "TASK-2"), by_story[os.path.join(os.path.realpath(ws), "TASK-2")], tabs)["root"].endswith("TASK-2")
 
 
 def test_progress_lines_cover_merged_and_skipped_tasks():
@@ -88,16 +100,19 @@ def test_archive_and_restore_round_trip():
 def test_demos_list_videos_and_tag_by_filename():
     with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
         os.makedirs(os.path.join(root, "demos"))
-        for name in ("29217-void-all.mp4", "F1_dispute.webm", "notes.md", "misc.mov"):
+        for name in ("10001-void-all.mp4", "F1_dispute.webm", "notes.md", "misc.mov"):
             open(os.path.join(root, "demos", name), "wb").write(b"x")
-        board = dict(root=root, cards={"29217": "Void"}, plans=[dict(id="F1")], sources=dict(demos=["demos/*"]))
-        open(os.path.join(root, "demos", "29217-void-all.chapters.json"), "w", encoding="utf-8").write(json.dumps([dict(t=1.5, label="AC1", result="PASS")]))
-        assert next(d for d in serve.demos(board) if d["title"] == "29217-void-all")["chapters"] == [dict(t=1.5, label="AC1", result="PASS")]
-        open(os.path.join(root, "demos", "29217-void-all.vtt"), "w", encoding="utf-8").write("WEBVTT\n")
-        assert next(d for d in serve.demos(board) if d["title"] == "29217-void-all")["subtitles"] == "demos/29217-void-all.vtt"
+        board = dict(root=root, cards={"10001": "Void"}, plans=[dict(id="F1")], sources=dict(demos=["demos/*"]))
+        open(os.path.join(root, "demos", "10001-void-all.chapters.json"), "w", encoding="utf-8").write(json.dumps([dict(t=1.5, label="AC1", result="PASS")]))
+        assert next(d for d in serve.demos(board) if d["title"] == "10001-void-all")["chapters"] == [dict(t=1.5, label="AC1", result="PASS")]
+        open(os.path.join(root, "demos", "10001-void-all.vtt"), "w", encoding="utf-8").write("WEBVTT\n")
+        assert next(d for d in serve.demos(board) if d["title"] == "10001-void-all")["subtitles"] == "demos/10001-void-all.vtt"
         got = {d["title"]: d["tags"] for d in serve.demos(board)}
-        assert got == {"29217-void-all": ["29217"], "F1_dispute": ["F1"], "misc": []}
-        assert serve.demos(dict(root=root, sources={})) is None
+        assert got == {"10001-void-all": ["10001"], "F1_dispute": ["F1"], "misc": []}
+        assert {d["title"] for d in serve.demos(dict(root=root, sources={}))} == {"10001-void-all", "F1_dispute", "misc"}
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+        assert serve.demos(dict(root=empty, sources={})) is None
 
 
 def test_closeout_reads_status_checklist_and_tables():
@@ -108,16 +123,30 @@ def test_closeout_reads_status_checklist_and_tables():
         assert c["state"] == "done" and [i["done"] for i in c["items"]] == [True, False]
         assert c["tables"] == {"删除": [["a/", "scratch", "tmp"]]}
         assert serve.closeout(dict(root=root, sources=dict(closeout="NOPE.md")))["exists"] is False
-        assert serve.closeout(dict(root=root, sources={})) is None
+        assert serve.closeout(dict(root=root, sources={}))["state"] == "done"
+        empty = os.path.join(root, "empty")
+        os.makedirs(empty)
+        assert serve.closeout(dict(root=empty, sources={})) is None
+
+
+def test_conventional_ac_file_needs_no_config():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        os.makedirs(os.path.join(root, "docs"))
+        open(os.path.join(root, "docs", "AC.md"), "w", encoding="utf-8").write(
+            "# TASK-10002 AC\n\n| 状态 | AC | 描述 |\n| :-- | :-- | :-- |\n| 通过 | AC1 | a |\n| 阻塞（等刷数） | AC2 | b |\n| | AC3 | c |\n| 部分通过 | AC4 | d |\n")
+        rows = serve.ac_rows(dict(id="TASK-10002", name="TASK-10002", root=root))
+        assert [(r["card"], r["ac"], r["status"]) for r in rows] == [("10002", "AC1", "PASS"), ("10002", "AC2", "阻塞"), ("10002", "AC3", "未执行"), ("10002", "AC4", "部分通过")]
+        assert serve.ac_rows(dict(id="x", name="x", root=os.path.join(root, "docs", "nope"))) == []
 
 
 if __name__ == "__main__":
+    test_conventional_ac_file_needs_no_config()
     test_closeout_reads_status_checklist_and_tables()
     test_demos_list_videos_and_tag_by_filename()
     test_archive_and_restore_round_trip()
     test_ac_table_groups_statuses_and_sections()
     test_progress_lines_cover_merged_and_skipped_tasks()
-    test_unregistered_tabs_of_one_lead_form_one_board()
+    test_workers_group_by_tab_then_story_then_session()
     test_tab_claims_follow_continuation_suffix_only()
     test_latest_dispatch_wins_and_old_report_is_stale()
     print("ok")

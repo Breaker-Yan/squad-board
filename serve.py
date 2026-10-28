@@ -115,31 +115,79 @@ def cell_shots(root, base, cells):
     return found
 
 
-def ac_rows(board):
+AC_FILES = ["docs/AC.md", "AC.md"]
+COLUMN_NAMES = [("card", ["卡", "卡号", "card"]), ("ac", ["ac"]), ("qam", ["qam 核对", "核对", "qam", "证据", "evidence"]),
+                ("qa", ["qa 结论", "qa"]), ("issue", ["issue", "缺陷", "bug"]), ("cat", ["类别", "分类", "功能", "category"]),
+                ("how", ["执行方式", "方式", "how", "story"]), ("final", ["最终状态", "状态", "结论", "结果", "status", "result"])]
+DEFAULT_STATUSES = [
+    dict(id="PASS", label="通过", color="pass", done=True, **{"pass": True}, prefix=["PASS", "通过", "✅"]),
+    dict(id="部分通过", label="部分通过", color="warn", done=True, match=["部分PASS", "部分 PASS", "部分通过"]),
+    dict(id="FAIL", label="失败", color="fail", done=True, match=["FAIL", "不通过", "失败", "❌"]),
+    dict(id="待复测", label="待复测", color="info", match=["待复测", "复测"]),
+    dict(id="阻塞", label="阻塞", color="info", match=["阻塞", "BLOCKED", "blocked"]),
+    dict(id="不适用", label="不适用", color="violet", done=True, na=True, match=["不适用", "N/A"]),
+    dict(id="不可测", label="不可测", color="violet", done=True, na=True, match=["不可测"]),
+    dict(id="未执行", label="未执行", color="idle", match=["未执行", "未开始", "未报告", "待验", "TODO"]),
+    dict(id="其他", label="其他", color="muted"),
+]
+
+
+def header_columns(cells):
+    names = [c.strip().lower() for c in cells]
+    if "ac" not in names:
+        return None
+    columns = []
+    for name in names:
+        exact = next((field for field, aliases in COLUMN_NAMES if name in aliases), None)
+        columns.append(exact or next((field for field, aliases in COLUMN_NAMES if any(a in name for a in aliases)), ""))
+    return columns
+
+
+def ac_spec(board):
     spec = board.get("sources", {}).get("ac_table")
+    if spec:
+        return spec
+    found = next((f for f in AC_FILES if board.get("root") and os.path.isfile(os.path.join(board["root"], f))), None)
+    return dict(file=found, empty="未执行", other="其他") if found else None
+
+
+def ac_rows(board):
+    spec = ac_spec(board)
     path = os.path.join(board["root"], spec["file"]) if spec else ""
     if not spec or not os.path.isfile(path):
         return []
-    base, columns, sections = os.path.dirname(path), spec.get("columns", AC_COLUMNS), spec["sections"]
-    key = re.compile(spec.get("key", r"\d{5}"))
-    statuses = board.get("statuses", [])
+    base, sections = os.path.dirname(path), spec.get("sections")
+    positional = spec.get("columns", AC_COLUMNS)
+    key = re.compile(spec.get("key", r"\d{4,}"))
+    default_card = (re.search(r"\d{4,}", f"{board.get('name', '')} {board.get('id', '')}") or [""])[0]
+    statuses = board.get("statuses") or DEFAULT_STATUSES
     report_shots = report_evidence(board["root"], base, board.get("groups", []))
-    rows, section, group = [], None, "—"
+    rows, section, group, columns = [], (None if sections else True), "—", None
     for line in open(path, encoding="utf-8"):
         if line.startswith("## "):
-            section, group = next((k for k in sections if line.startswith(k)), None), "—"
+            section = next((k for k in sections if line.startswith(k)), None) if sections else True
+            group, columns = "—", None
             continue
-        if section is None or not line.startswith("|"):
+        if section is None or not line.startswith("|") or re.match(r"^\|\s*:?-", line):
             continue
         cells = [c.strip() for c in line.strip().strip("|").split("|")]
+        if header_columns(cells):
+            columns = header_columns(cells)
+            continue
         if re.fullmatch(r"\*\*(.+)\*\*", cells[0]):
             group = cells[0].strip("*")
             continue
-        if len(cells) < len(columns) or not key.fullmatch(cells[0]):
+        row = dict(zip(columns or positional, cells))
+        row.pop("", None)
+        row.setdefault("card", default_card)
+        if not row.get("ac") or not key.fullmatch(row["card"]) or (not columns and len(cells) < len(positional)):
             continue
-        row = dict(zip(columns, cells), group=group)
+        for field in AC_COLUMNS:
+            row.setdefault(field, "")
+        row["group"] = group
         final = row["final"]
-        row["status"] = sections[section] or (spec.get("empty", "") if final in ("", "—") else classify(final, statuses, spec.get("other", "")))
+        forced = sections[section] if sections else None
+        row["status"] = forced or (spec.get("empty", "") if final in ("", "—") else classify(final, statuses, spec.get("other", "")))
         row["shots"] = list(dict.fromkeys(report_shots.get(f"{row['card']}|{row['ac']}", []) + cell_shots(board["root"], base, cells)))
         rows.append(row)
     return rows
@@ -175,7 +223,8 @@ def issues(board):
 
 
 def demos(board):
-    pattern = board.get("sources", {}).get("demos")
+    pattern = board.get("sources", {}).get("demos") or (["demos/*.mp4", "demos/*.webm", "demos/*.mov"]
+                                                         if board.get("root") and os.path.isdir(os.path.join(board["root"], "demos")) else None)
     if not pattern:
         return None
     root, tags = board["root"], set(board.get("cards", {})) | {p["id"] for p in board.get("plans", [])}
@@ -199,7 +248,8 @@ CHECK_ITEM = re.compile(r"^- \[([ xX])\] (.+)$", re.M)
 
 
 def closeout(board):
-    rel = board.get("sources", {}).get("closeout")
+    rel = board.get("sources", {}).get("closeout") or next((f for f in ("docs/CLOSEOUT.md", "CLOSEOUT.md")
+                                                            if board.get("root") and os.path.isfile(os.path.join(board["root"], f))), None)
     if not rel:
         return None
     path = os.path.join(board["root"], rel)
@@ -349,10 +399,12 @@ def board_snapshot(session, board, agents, tabs, exact=None):
     present = {w["name"] for w in workers}
     data = dict(id=board["id"], session=session, name=board.get("name", board["id"]), subtitle=board.get("subtitle", ""),
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
-                statuses=board.get("statuses", []), phases=board.get("phases", []), workers=workers,
+                statuses=board.get("statuses") or DEFAULT_STATUSES, phases=board.get("phases", []), workers=workers,
                 missing=[dict(name=n, role=s.get("role", n)) for n, s in declared.items() if n not in present],
                 rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board), closeout=closeout(board),
                 demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
+    if not data["cards"] and data["rows"]:
+        data["cards"] = {card: card for card in dict.fromkeys(r["card"] for r in data["rows"])}
     data["needs"] = needs(data)
     return data
 
@@ -382,20 +434,63 @@ def running_sessions():
     return [s["name"] for s in listed if s.get("running")]
 
 
-def auto_boards(session, agents, tabs, prefixes):
-    labels = sorted({tabs.get(a["tab_id"], "") for a in agents if a.get("name") and not claims(tabs.get(a["tab_id"], ""), prefixes)})
-    if not labels:
-        return []
+def load_config():
+    path = os.path.join(REGISTRY, "config.json")
+    try:
+        return json.load(open(path, encoding="utf-8")) if os.path.isfile(path) else {}
+    except ValueError:
+        return {}
+
+
+def story_of(path, workspaces):
+    real = os.path.realpath(path) if path else ""
+    for workspace in workspaces:
+        base = os.path.realpath(os.path.expanduser(workspace))
+        if real.startswith(base + os.sep):
+            return os.path.join(base, os.path.relpath(real, base).split(os.sep)[0])
+    return None
+
+
+def agent_dir(agent):
+    return agent.get("foreground_cwd") or agent.get("cwd") or ""
+
+
+def session_board(session, loose, agents, tabs):
+    labels = sorted({tabs.get(a["tab_id"], "") for a in loose})
     leads = [a for a in agents if not a.get("name") and not tabs.get(a["tab_id"], "").startswith("W·")]
     name = leads[0].get("terminal_title_stripped") if len(leads) == 1 else ""
     subtitle = "未登记 board.json · 本 session 唯一的 lead" if name else f"未登记 board.json · 本 session 有 {len(leads)} 个 lead，无法区分归属"
-    return [dict(id="auto", name=name or f"{session} 未登记的 worker", subtitle=subtitle, root="", auto=True,
-                 tabs=sorted({re.sub(r"-\d+$", "", l) for l in labels}), claimed_exact=labels)]
+    return dict(id="auto", name=name or f"{session} 未登记的 worker", subtitle=subtitle, root="", auto=True,
+                tabs=sorted({re.sub(r"-\d+$", "", l) for l in labels}))
+
+
+def story_board(story, members, tabs):
+    labels = {tabs.get(a["tab_id"], "") for a in members}
+    return dict(id=f"story-{os.path.basename(story)}", name=os.path.basename(story), subtitle="未登记 board.json · 按 story 目录自动识别",
+                root=story, auto=True, tabs=sorted({re.sub(r"-\d+$", "", l) for l in labels}))
+
+
+def assign_workers(boards, agents, tabs, workspaces):
+    stories = {b["id"]: story_of(b.get("root", ""), workspaces) for b in boards}
+    owned, by_story, loose = {b["id"]: [] for b in boards}, {}, []
+    for agent in (a for a in agents if a.get("name")):
+        label = tabs.get(agent["tab_id"], "")
+        story = story_of(agent_dir(agent), workspaces)
+        owner = next((b["id"] for b in boards if claims(label, b.get("tabs", []))), None) \
+            or next((b["id"] for b in boards if story and stories[b["id"]] == story), None)
+        if owner:
+            owned[owner].append(agent)
+        elif story:
+            by_story.setdefault(story, []).append(agent)
+        else:
+            loose.append(agent)
+    return owned, by_story, loose
 
 
 def snapshot():
     sessions = []
     registered = load_boards()
+    workspaces = load_config().get("workspaces", [])
     for session in sorted(set(registered) | set(running_sessions())):
         boards = registered.get(session, [])
         layout = read_layout(session)
@@ -405,12 +500,16 @@ def snapshot():
             continue
         agents, tabs = layout
         layouts[session] = [a["name"] for a in agents if a.get("name")]
-        prefixes = [p for b in boards for p in b.get("tabs", [])]
-        guessed = auto_boards(session, agents, tabs, prefixes)
-        for board in guessed:
-            agents_in = [a for a in agents if a.get("name") and tabs.get(a["tab_id"], "") in board["claimed_exact"]]
-            board.update(view=board_snapshot(session, board, agents_in, tabs, exact=board["claimed_exact"]))
-        views = [board_snapshot(session, b, agents, tabs) for b in boards] + [dict(b["view"], auto=True) for b in guessed]
+        owned, by_story, loose = assign_workers(boards, agents, tabs, workspaces)
+        leads = [a for a in agents if not a.get("name") and not tabs.get(a["tab_id"], "").startswith("W·")]
+        if loose and len(by_story) == 1 and len(leads) == 1:
+            next(iter(by_story.values())).extend(loose)
+            loose = []
+        views = [board_snapshot(session, b, owned[b["id"]], tabs, exact=True) for b in boards]
+        views += [dict(board_snapshot(session, story_board(story, members, tabs), members, tabs, exact=True), auto=True)
+                  for story, members in sorted(by_story.items())]
+        if loose:
+            views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
     return dict(sessions=sessions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])

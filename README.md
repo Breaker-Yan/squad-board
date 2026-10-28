@@ -38,6 +38,24 @@ Conventions the board relies on:
 | Worker tabs start with `W·`, leads are not in `W·` tabs | Tells leads and workers apart |
 | A worker's report starts with `STATUS: in-progress \| done \| blocked` | Drives report state and "needs you" |
 
+## Story spaces and conventions (no configuration)
+
+If each task lives in its own directory under a workspace (`<workspace>/<story>/`), list the workspace in `~/.squad-board/config.json`:
+
+```json
+{"workspaces": ["~/work"]}
+```
+
+A worker whose working directory is inside `<workspace>/<story>/` belongs to that story: it joins the declared board whose `root` is in the same story, or else an auto board rooted at the story. Inside a board's `root` the board finds, without any `sources` entry:
+
+| File | Shows |
+|---|---|
+| `docs/AC.md` (or `AC.md`) | AC table. Columns are matched by header name; only `AC` and a status column (`最终状态` / `状态` / `结论` / `status` / `result`) are required, the card defaults to the digits in the board name |
+| `demos/*.mp4` / `.webm` / `.mov` | MVP demo panel |
+| `docs/CLOSEOUT.md` (or `CLOSEOUT.md`) | Closeout panel |
+
+Without `statuses`, built-in ones apply: PASS / 部分通过 / FAIL / 待复测 / 阻塞 / 不适用 / 不可测 / 未执行 / 其他, matched in Chinese and English.
+
 ## Declaring a board (per lead)
 
 Write `~/.squad-board/<herdr session>/<board id>.json` when the lead opens its first worker tab:
@@ -78,7 +96,7 @@ Only rows under the listed `## ` headings count; a section mapped to a status id
 
 ## MVP demos
 
-Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4", "demos/*.webm", "demos/*.mov"]`. Videos show up in an **MVP 演示** panel within seconds, newest first, and play in place with seeking (files are streamed with HTTP Range). A file whose name starts with a card code or plan id (`29217-void-all.mp4`, `F1_dispute.mov`) is tagged and gets a **▶ 演示** badge on that card tile and plan. A `<video>.chapters.json` next to a video (`[{"t": seconds, "label": "AC1 …", "result": "PASS"}]`) is listed under it; clicking a chapter seeks there. Live updates never reload a playing video. Archived snapshots keep the list and link the original files.
+Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4", "demos/*.webm", "demos/*.mov"]`. Videos show up in an **MVP 演示** panel within seconds, newest first, and play in place with seeking (files are streamed with HTTP Range). A file whose name starts with a card code or plan id (`10001-void-all.mp4`, `F1_dispute.mov`) is tagged and gets a **▶ 演示** badge on that card tile and plan. A `<video>.chapters.json` next to a video (`[{"t": seconds, "label": "AC1 …", "result": "PASS"}]`) is listed under it; clicking a chapter seeks there. Live updates never reload a playing video. Archived snapshots keep the list and link the original files.
 
 ## Closeout
 
