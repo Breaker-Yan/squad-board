@@ -351,9 +351,21 @@ def load_dispatch(session, board_id):
     return latest
 
 
+def latest_report(root, report):
+    if not report:
+        return report
+    folder = os.path.dirname(os.path.join(root, report["file"]))
+    newer = sorted((f for f in glob.glob(os.path.join(folder, "*.md")) if os.path.getmtime(f) > report["mtime"]), key=os.path.getmtime, reverse=True)
+    for path in newer:
+        found = report_status(root, os.path.relpath(path, root))
+        if found:
+            return dict(found, followed=True)
+    return report
+
+
 def worker_view(agent, tab_label, spec, root, session, task=None):
     name = agent.get("name") or ""
-    report = report_status(root, task["report"]) if task and task.get("report") else None
+    report = latest_report(root, report_status(root, task["report"])) if task and task.get("report") else None
     if report and report["mtime"] < task.get("at", 0):
         report["stale"] = True
     return dict(name=name, role=spec.get("role") or name or "无名 agent", group=spec.get("group"), tab=tab_label,
@@ -380,13 +392,23 @@ def needs(board):
             minutes = int((now - rep["mtime"]) / 60)
             out.append(dict(level="warn", text=f"{w['role']} 已{STATUS_ZH.get(w['status'])}，但报告仍是 in-progress，{minutes} 分钟没更新", **at))
     for m in board["missing"]:
-        out.append(dict(level="fail", text=f"{m['role']}（{m['name']}）不在 herdr 里了", worker=m["name"]))
+        out.append(dict(level="fail", text=f"{m['role']}（{m['name']}）已不在 herdr，但任务报告还是 {m['report']}", worker=m["name"]))
     for p in board["pending"]:
         out.append(dict(level="warn", text=f"{p.get('id', '')} 等你确认：{p.get('ask', '')}"))
     for i in board["issues"]:
         if (i.get("round") or 0) >= 3 and i.get("status") not in ("verified", "rejected"):
             out.append(dict(level="fail", text=f"{i['id']} 已到第 {i['round']} 轮仍未关闭"))
     return sorted(out, key=lambda n: n["level"] != "fail")
+
+
+def interrupted(root, declared, tasks, present):
+    out = []
+    for name in sorted((set(declared) | set(tasks)) - present):
+        task = tasks.get(name) or {}
+        report = latest_report(root, report_status(root, task["report"])) if task.get("report") and root else None
+        if report and report["state"] != "done":
+            out.append(dict(name=name, role=declared.get(name, {}).get("role", name), report=report["state"], file=report["file"]))
+    return out
 
 
 def board_snapshot(session, board, agents, tabs, exact=None):
@@ -400,7 +422,7 @@ def board_snapshot(session, board, agents, tabs, exact=None):
     data = dict(id=board["id"], session=session, name=board.get("name", board["id"]), subtitle=board.get("subtitle", ""),
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
                 statuses=board.get("statuses") or DEFAULT_STATUSES, phases=board.get("phases", []), workers=workers,
-                missing=[dict(name=n, role=s.get("role", n)) for n, s in declared.items() if n not in present],
+                missing=interrupted(root, declared, tasks, present),
                 rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board), closeout=closeout(board),
                 demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
     if not data["cards"] and data["rows"]:

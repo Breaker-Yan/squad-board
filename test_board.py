@@ -139,7 +139,32 @@ def test_conventional_ac_file_needs_no_config():
         assert serve.ac_rows(dict(id="x", name="x", root=os.path.join(root, "docs", "nope"))) == []
 
 
+def test_only_workers_gone_mid_task_need_attention():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        open(os.path.join(root, "a.md"), "w", encoding="utf-8").write("STATUS: in-progress\n")
+        open(os.path.join(root, "b.md"), "w", encoding="utf-8").write("STATUS: done\n")
+        declared = {"planner": {"role": "Planner"}, "qa": {"role": "QA"}, "eng": {"role": "Engineer"}}
+        tasks = {"qa": dict(report="a.md"), "eng": dict(report="b.md")}
+        assert [m["name"] for m in serve.interrupted(root, declared, tasks, present=set())] == ["qa"]
+        assert serve.interrupted(root, declared, tasks, present={"qa"}) == []
+
+
+def test_report_follows_newer_status_file_in_same_folder():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        os.makedirs(os.path.join(root, "G2"))
+        old, new, notes = (os.path.join(root, "G2", n) for n in ("REPORT.md", "REPORT-NEXT.md", "notes.md"))
+        open(old, "w", encoding="utf-8").write("STATUS: in-progress\n")
+        os.utime(old, (1000, 1000))
+        open(new, "w", encoding="utf-8").write("STATUS: done\n")
+        os.utime(new, (2000, 2000))
+        open(notes, "w", encoding="utf-8").write("no status line\n")
+        got = serve.latest_report(root, serve.report_status(root, "G2/REPORT.md"))
+        assert got["file"] == "G2/REPORT-NEXT.md" and got["state"] == "done" and got["followed"]
+
+
 if __name__ == "__main__":
+    test_report_follows_newer_status_file_in_same_folder()
+    test_only_workers_gone_mid_task_need_attention()
     test_conventional_ac_file_needs_no_config()
     test_closeout_reads_status_checklist_and_tables()
     test_demos_list_videos_and_tag_by_filename()
