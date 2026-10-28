@@ -21,7 +21,7 @@ PORT_RANGE = range(8790, 8800)
 STALE_MINUTES = 20
 FILE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json; charset=utf-8",
               ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
-              ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime"}
+              ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".vtt": "text/vtt; charset=utf-8"}
 VIDEO_TYPES = (".mp4", ".webm", ".mov")
 RANGE = re.compile(r"bytes=(\d*)-(\d*)$")
 STATUS_LINE = re.compile(r"STATUS:\s*([A-Za-z-]+)\s*(.*)")
@@ -190,7 +190,8 @@ def demos(board):
         except (ValueError, KeyError, TypeError):
             chapters = []
         found.append(dict(file=root_rel(root, path), title=stem, size=os.path.getsize(path), mtime=int(os.path.getmtime(path)),
-                          tags=[t for t in re.split(r"[-_ .]+", stem) if t in tags], chapters=chapters))
+                          tags=[t for t in re.split(r"[-_ .]+", stem) if t in tags], chapters=chapters,
+                          subtitles=root_rel(root, os.path.splitext(path)[0] + ".vtt")))
     return sorted(found, key=lambda d: -d["mtime"])
 
 

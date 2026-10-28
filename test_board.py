@@ -93,6 +93,8 @@ def test_demos_list_videos_and_tag_by_filename():
         board = dict(root=root, cards={"29217": "Void"}, plans=[dict(id="F1")], sources=dict(demos=["demos/*"]))
         open(os.path.join(root, "demos", "29217-void-all.chapters.json"), "w", encoding="utf-8").write(json.dumps([dict(t=1.5, label="AC1", result="PASS")]))
         assert next(d for d in serve.demos(board) if d["title"] == "29217-void-all")["chapters"] == [dict(t=1.5, label="AC1", result="PASS")]
+        open(os.path.join(root, "demos", "29217-void-all.vtt"), "w", encoding="utf-8").write("WEBVTT\n")
+        assert next(d for d in serve.demos(board) if d["title"] == "29217-void-all")["subtitles"] == "demos/29217-void-all.vtt"
         got = {d["title"]: d["tags"] for d in serve.demos(board)}
         assert got == {"29217-void-all": ["29217"], "F1_dispute": ["F1"], "misc": []}
         assert serve.demos(dict(root=root, sources={})) is None

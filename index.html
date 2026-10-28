@@ -773,7 +773,7 @@ document.addEventListener("click", e => {
 const fmtSize = n => n >= 1 << 20 ? `${(n / (1 << 20)).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 const demosFor = (b, tag) => (b.demos || []).filter(d => d.tags.includes(tag));
 const demoBadge = (b, tag) => demosFor(b, tag).length ? `<span class="demo-badge" data-demo-tag="${esc(tag)}" role="button" tabindex="0" title="播放 ${esc(tag)} 的演示">▶ 演示 ${demosFor(b, tag).length}</span>` : "";
-const demoFigure = (b, d, autoplay) => `<figure class="demo"><video controls preload="metadata" ${autoplay ? "autoplay" : ""} src="${fileHref(b, d.file)}"></video>
+const demoFigure = (b, d, autoplay) => `<figure class="demo"><video controls preload="metadata" ${autoplay ? "autoplay" : ""} src="${fileHref(b, d.file)}">${d.subtitles ? `<track kind="subtitles" srclang="zh" label="讲解" default src="${fileHref(b, d.subtitles)}">` : ""}</video>
   <figcaption><b>${esc(d.title)}</b>${d.tags.map(t => ` <span class="chip mono">${esc(t)}</span>`).join("")}<span class="s mono">${esc(fmtTime(d.mtime))} · ${fmtSize(d.size)}</span></figcaption>
   ${(d.chapters || []).length ? `<ol class="chapters">${d.chapters.map(c => `<li><button type="button" class="chapter" data-seek="${c.t}"><span class="mono">${fmtClock(c.t)}</span> ${esc(c.label)}${c.result ? ` <b style="color:var(--${FIXED[c.result.toLowerCase()] || (c.result === "PASS" ? "pass" : c.result === "FAIL" ? "fail" : "muted")})">${esc(c.result)}</b>` : ""}</button></li>`).join("")}</ol>` : ""}</figure>`;
 function renderDemos(b) {
