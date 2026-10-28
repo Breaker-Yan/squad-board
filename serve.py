@@ -282,7 +282,7 @@ def needs(board):
     for p in board["pending"]:
         out.append(dict(level="warn", text=f"{p.get('id', '')} 等你确认：{p.get('ask', '')}"))
     for i in board["issues"]:
-        if (i.get("round") or 0) >= 3 and i.get("status") != "verified":
+        if (i.get("round") or 0) >= 3 and i.get("status") not in ("verified", "rejected"):
             out.append(dict(level="fail", text=f"{i['id']} 已到第 {i['round']} 轮仍未关闭"))
     return sorted(out, key=lambda n: n["level"] != "fail")
 

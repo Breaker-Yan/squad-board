@@ -319,7 +319,7 @@ function barHtml(board, rows) {
   return (board.statuses || []).map(s => [s, rows.filter(r => r.status === s.id).length]).filter(([, n]) => n)
     .map(([s, n]) => `<span style="width:${n / rows.length * 100}%;background:var(--${s.color})" title="${esc(s.label)} ${n}"></span>`).join("");
 }
-const isUnclosed = i => i.status !== "verified";
+const isUnclosed = i => !["verified", "rejected"].includes(i.status);
 const openIssues = b => (b.issues || []).filter(isUnclosed).length;
 let issuesOpenOnly = false;
 
