@@ -141,10 +141,12 @@ def test_conventional_ac_file_needs_no_config():
 
 def test_only_workers_gone_mid_task_need_attention():
     with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
-        open(os.path.join(root, "a.md"), "w", encoding="utf-8").write("STATUS: in-progress\n")
-        open(os.path.join(root, "b.md"), "w", encoding="utf-8").write("STATUS: done\n")
+        for folder in ("qa", "eng"):
+            os.makedirs(os.path.join(root, folder))
+        open(os.path.join(root, "qa", "REPORT.md"), "w", encoding="utf-8").write("STATUS: in-progress\n")
+        open(os.path.join(root, "eng", "LOG.md"), "w", encoding="utf-8").write("STATUS: done\n")
         declared = {"planner": {"role": "Planner"}, "qa": {"role": "QA"}, "eng": {"role": "Engineer"}}
-        tasks = {"qa": dict(report="a.md"), "eng": dict(report="b.md")}
+        tasks = {"qa": dict(report="qa/REPORT.md"), "eng": dict(report="eng/LOG.md")}
         assert [m["name"] for m in serve.interrupted(root, declared, tasks, present=set())] == ["qa"]
         assert serve.interrupted(root, declared, tasks, present={"qa"}) == []
 
