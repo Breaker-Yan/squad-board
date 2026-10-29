@@ -18,7 +18,6 @@ ARCHIVE_DIR = os.path.join(REGISTRY, ".archive")
 LOCAL_CLIENTS = ("127.0.0.1", "::1")
 HOST = os.environ.get("SQUAD_BOARD_HOST", "127.0.0.1")
 PORT_RANGE = range(8790, 8800)
-STALE_MINUTES = 20
 FILE_TYPES = {".png": "image/png", ".jpg": "image/jpeg", ".json": "application/json; charset=utf-8",
               ".md": "text/plain; charset=utf-8", ".txt": "text/plain; charset=utf-8",
               ".mp4": "video/mp4", ".webm": "video/webm", ".mov": "video/quicktime", ".vtt": "text/vtt; charset=utf-8"}
@@ -414,23 +413,15 @@ def worker_view(agent, tab_label, spec, root, session, task=None):
 
 
 def needs(board):
-    out, now = [], time.time()
+    out = []
     for w in board["workers"]:
         rep, at = w["report"], dict(worker=w["name"], tab=w["tab"], pane=w.get("pane", ""))
         if not w["name"]:
             out.append(dict(level="warn", text="无名 agent，可能是 worker 重启后丢了 name", **at))
         elif w["status"] == "blocked":
             out.append(dict(level="fail", text=f"{w['role']} 在等输入", **at))
-        if rep and rep.get("stale"):
-            if w["status"] in ("idle", "done"):
-                out.append(dict(level="warn", text=f"{w['role']} 已{STATUS_ZH.get(w['status'])}，但这次任务的报告还没写（{rep['file']} 仍是派活前的版本）", **at))
-        elif rep and rep["state"] == "blocked" and w["status"] != "blocked":
+        if rep and not rep.get("stale") and rep["state"] == "blocked" and w["status"] != "blocked":
             out.append(dict(level="fail", text=f"{w['role']} 显示{STATUS_ZH.get(w['status'], w['status'])}，但报告写 blocked：{rep['detail']}", **at))
-        elif rep and rep["state"] == "in-progress" and w["status"] in ("idle", "done") and now - rep["mtime"] > STALE_MINUTES * 60:
-            minutes = int((now - rep["mtime"]) / 60)
-            out.append(dict(level="warn", text=f"{w['role']} 已{STATUS_ZH.get(w['status'])}，但报告仍是 in-progress，{minutes} 分钟没更新", **at))
-    for m in board["missing"]:
-        out.append(dict(level="fail", text=f"{m['role']}（{m['name']}）已不在 herdr，但任务报告还是 {m['report']}", worker=m["name"]))
     for p in board["pending"]:
         out.append(dict(level="warn", text=f"{p.get('id', '')} 等你确认：{p.get('ask', '')}"))
     for i in board["issues"]:

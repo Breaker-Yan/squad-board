@@ -2,7 +2,7 @@
 
 A local, zero-dependency live board for multi-agent squads running in [herdr](https://herdr.dev).
 
-One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, a "needs you" list of leads waiting on your decision, and reminders (blocked workers, stale reports, vanished workers, pending confirmations). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
+One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, a "needs you" list of leads waiting on your decision, and reminders (blocked workers, pending confirmations). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
 
 - Python 3 standard library only, no install step
 - Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a pane, **reply** to a lead that is waiting on you, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
@@ -82,7 +82,7 @@ printf '{"worker":"%s","brief":"%s","report":"%s","at":%s}\n' \
   >> ~/.squad-board/"$HERDR_SESSION"/<board id>.dispatch.jsonl
 ```
 
-The last line per worker wins. A report older than its dispatch shows as "not updated", and becomes a reminder once the worker goes idle.
+The last line per worker wins. A report older than its dispatch shows as "not updated" on the worker.
 
 ## AC table
 
@@ -106,7 +106,7 @@ Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-pro
 
 ## Waiting on you
 
-Leads (nameless Claude Code agents outside `W·` tabs) that stopped to ask you something are listed first under **需要你**, with their question, the options they listed, the `※ recap` line and the grey suggested reply from their input box. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`; it is re-read only when the agent's state changes or every 30 s. A free-text question can be answered in place: **采纳建议** sends the suggested reply, **回复…** sends your own text (typed into the lead's input box and submitted). The reply is refused when the input box already holds text you typed but did not send, and selection or permission prompts must still be answered in the session (**⤢ 定位**). **需要你** holds nothing else: reminders about workers (stale reports, blocked or vanished workers) appear in a separate **提醒** panel on the board page and as a grey count on its overview row.
+Leads (nameless Claude Code agents outside `W·` tabs) that stopped to ask you something are listed first under **需要你**, with their question, the options they listed, the `※ recap` line and the grey suggested reply from their input box. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`; it is re-read only when the agent's state changes or every 30 s. A free-text question can be answered in place: **采纳建议** sends the suggested reply, **回复…** sends your own text (typed into the lead's input box and submitted). The reply is refused when the input box already holds text you typed but did not send, and selection or permission prompts must still be answered in the session (**⤢ 定位**). **需要你** holds nothing else: reminders (blocked workers, pending confirmations) appear in a separate **提醒** panel on the board page and as a grey count on its overview row.
 
 ## Archiving a board
 

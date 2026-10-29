@@ -26,7 +26,7 @@ def test_latest_dispatch_wins_and_old_report_is_stale():
         assert task["brief"] == "b.md"
         view = serve.worker_view(dict(name="w1", agent_status="idle"), "W·x", {}, root, "s", task)
         assert view["report"]["stale"]
-        assert any("还没写" in n["text"] for n in serve.needs(dict(workers=[view], missing=[], pending=[], issues=[])))
+        assert serve.needs(dict(workers=[view], missing=[dict(name="gone", role="gone", report="in-progress")], pending=[], issues=[])) == []
 
 
 def test_workers_group_by_tab_then_story_then_session():
