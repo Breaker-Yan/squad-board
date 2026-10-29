@@ -108,7 +108,7 @@ Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-pro
 
 Leads (nameless Claude Code agents outside `W·` tabs) whose turn has ended are listed under **需要你** in two groups:
 
-- **🔴 需要你决定** — the lead is stuck on a selection or permission prompt (AskUserQuestion, tool approval). Its options are buttons: clicking one re-reads the screen, checks the prompt and that option are unchanged, and presses its number key.
+- **🔴 需要你决定** — the lead is stuck on a selection or permission prompt (AskUserQuestion, tool approval). Its options are buttons: each option shows its description; clicking one re-reads the screen, checks the prompt and that option are unchanged, moves the cursor with arrow keys, re-checks the cursor and presses Enter. A text box answers through the prompt's "Type something." option. In reply boxes Enter submits and Option+Enter adds a line break. Every card starts with the task (board) it belongs to, and notifications are titled with it. Open pages reload themselves when `index.html` changes.
 - **🟡 停下等你** — the lead finished its turn and nothing else will wake it: no background shell is running and no worker of its board is working. The card shows the `※ recap` line and the last paragraph (tagged 在问你 when it reads like a question). **采纳建议** sends the grey suggested reply from its input box, **回复…** sends your own text; a reply is refused when the input box holds text you typed but did not send.
 
 A lead waiting on its own background work is not listed. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`, re-read when the agent's state changes or every 30 s. Ask leads to put decisions in AskUserQuestion rather than prose so they land in 🔴.

@@ -275,6 +275,12 @@ def test_dim_suggestion_is_returned_and_typed_text_is_not():
 def test_report_without_question_is_a_stop():
     report = decisions.parse_screen(synthetic_screen("\u23fa All checks passed.\nRegression is complete."), "idle")
     assert report["kind"] == "report" and report["question"].endswith("Regression is complete.")
+    short = decisions.parse_screen(synthetic_screen("\u23fa Background job finished, both checks were written back to the table.\n\nStopping here."), "idle")
+    assert short["question"].startswith("Background job finished") and short["question"].endswith("Stopping here.")
+    after_tool = decisions.parse_screen(synthetic_screen("\u23fa Write(docs/AC.md)\n  \u23bf  Added 2 lines\n\n\u23fa Both checks pass.\n\nStopping here."), "idle")
+    assert after_tool["question"] == "Both checks pass.\nStopping here."
+    after_reply = decisions.parse_screen(synthetic_screen("\u23fa Stopping here.\n\n\u276f Thanks, we are done.\n\n\u23fa OK."), "idle")
+    assert after_reply["question"] == "OK."
     hinted = synthetic_screen("\u23fa Regression is complete.").replace("\u273b Brewed", "\u273b Brewed").replace("\x1b[38;2;136;136;136m\u2500", "     \u25d0 medium \u00b7 /effort\n\x1b[38;2;136;136;136m\u2500", 1)
     assert decisions.parse_screen(hinted, "idle")["question"] == "Regression is complete."
     assert decisions.parse_screen(synthetic_screen("\u23fa Ready.", done=""), "idle") is None
@@ -286,6 +292,8 @@ def test_recap_asking_for_a_decision_counts_without_question_mark():
     recap = "PR is ready. \u4e0b\u4e00\u6b65\u9700\u8981\u4f60\u786e\u8ba4\u662f\u5426\u5408\u5e76\u3002"
     found = decisions.parse_screen(synthetic_screen(body, recap=recap), "idle")
     assert found["question"] == recap and found["recap"] == recap
+    hinted = decisions.parse_screen(synthetic_screen(body, recap=recap + " (disable recaps in /config)"), "idle")
+    assert hinted["recap"] == recap
     assert decisions.parse_screen(synthetic_screen(body, recap="PR is ready, nothing pending."), "idle")["kind"] == "report"
 
 
@@ -383,6 +391,26 @@ def test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed():
     assert [d["pane"] for d in fresh] == ["p1"]
     assert serve.notices([other], {}, {"s/*"})[1] == [other]
 
+def test_choice_options_keep_their_descriptions():
+    screen = "\n".join([
+        "\u2500" * 40,
+        " \u2610 Language",
+        "Which language for the greeting?",
+        "\u276f 1. Chinese",
+        "     Print a Chinese greeting; AC2 checks Chinese",
+        "  2. English",
+        "     Print Hello, world!; AC2 checks English",
+        "  3. Type something.",
+        "\u2500" * 40,
+        "  4. Chat about this",
+        "Enter to select \u00b7 \u2191/\u2193 to navigate \u00b7 Esc to cancel",
+    ])
+    parsed = decisions.parse_screen(screen, "blocked")
+    assert parsed["options"] == ["Chinese", "English", "Type something.", "Chat about this"]
+    assert parsed["details"] == ["Print a Chinese greeting; AC2 checks Chinese", "Print Hello, world!; AC2 checks English", "", ""]
+    assert parsed["cursor"] == 0
+    assert decisions.parse_screen(screen.replace("\u276f 1.", "  1.").replace("  4. Chat", "\u276f 4. Chat"), "blocked")["cursor"] == 3
+
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
     test_event_log_is_trimmed()
@@ -413,4 +441,5 @@ if __name__ == "__main__":
     test_permission_prompt_question_skips_separators_and_tips()
     test_past_decision_in_recap_is_not_a_question()
     test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed()
+    test_choice_options_keep_their_descriptions()
     print("ok")

@@ -75,6 +75,9 @@ table.mini td { padding: 3px 6px; }
 .dopt { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 0; padding: 2px 4px; border-radius: 4px; text-align: left; cursor: pointer; }
 .dopt:hover { background: var(--panel); color: var(--accent); }
 .dgroup { margin: 4px 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.task-tag { font-size: 12.5px; font-weight: 600; color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 1px 8px; text-decoration: none; white-space: nowrap; }
+.task-tag.none { color: var(--muted); border-color: var(--muted); }
+.dnote { display: block; color: var(--muted); font-size: 12.5px; margin: 0 0 4px 6px; }
 .dopt.choose { border: 1px solid var(--accent); margin: 2px 0; }
 .dacts { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip.accept { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
@@ -318,7 +321,11 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 const tokenOf = (board, id) => (board && board.statuses || []).find(s => s.id === id)?.color || FIXED[id] || "muted";
 const col = (board, id) => `var(--${tokenOf(board, id)})`;
 const boardKey = b => b.archive ? `archive:${b.archive}` : `${b.session}/${b.id}`;
-let STATE = null, view = null, firstRender = true;
+let STATE = null, view = null, firstRender = true, pageBuild = null;
+function reloadIfStale(data) {
+  if (pageBuild && data.build && data.build !== pageBuild && !document.activeElement?.classList?.contains("reply-text")) location.reload();
+  pageBuild ??= data.build;
+}
 const seenEvents = new Set();
 
 function allBoards() { return (STATE?.sessions || []).flatMap(s => s.boards); }
@@ -397,20 +404,30 @@ const SELECT_CHROME = /^(Type something|Chat about this)/;
 function decisionCard(d) {
   const key = `${d.session}|${d.pane}`;
   return `<li class="decision" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
-    <div class="dhead"><b>${esc(d.title)}</b><span class="chip mono">${esc(d.session)}</span>${d.story ? `<span class="chip mono">${esc(d.story)}</span>` : ""}
+    <div class="dhead">${taskTag(d)}<b>${esc(d.title)}</b><span class="chip mono">${esc(d.session)}</span>
       ${KIND_LABEL[d.kind] ? `<span class="pill" style="color:var(--warn)">${KIND_LABEL[d.kind]}</span>` : ""}<span class="s mono">${d.done_at ? `${esc(d.done_at)} 起在等` : "在等你"}</span></div>
     ${d.recap && d.recap !== d.question ? `<div class="recap">${esc(d.recap)}</div>` : ""}
     <div class="pre dq">${esc(d.question)}</div>
     ${(d.options || []).length ? `<ol class="dopts">${d.options.map((o, i) => d.kind === "question"
       ? `<li><button type="button" class="dopt" data-option="${esc(o)}" title="填进回复框">${esc(o)}</button></li>`
-      : SELECT_CHROME.test(o) ? "" : `<li><button type="button" class="dopt choose" data-choose="${i + 1}" data-option="${esc(o)}" title="直接在会话里选这一项">${esc(o)}</button></li>`).join("")}</ol>` : ""}
+      : SELECT_CHROME.test(o) ? "" : `<li><button type="button" class="dopt choose" data-choose="${i + 1}" data-option="${esc(o)}" title="直接在会话里选这一项">${esc(o)}</button>${(d.details || [])[i] ? `<span class="dnote">${esc(d.details[i])}</span>` : ""}</li>`).join("")}</ol>` : ""}
     <div class="dacts">
       ${d.suggestion && d.level === "stopped" ? `<button type="button" class="chip accept" data-send="${esc(d.suggestion)}">采纳建议：「${esc(d.suggestion)}」</button>` : ""}
       ${d.level === "stopped" ? `<button type="button" class="chip" data-reply-open>回复…</button>` : ""}
       ${focusBtn(d.session, d.pane, d.title)}
     </div>
-    <div class="dreply" ${openReplies.has(key) ? "" : "hidden"}><textarea class="reply-text" rows="2" placeholder="写给这个会话的回复，发送后它会继续" data-key="${esc(key)}">${esc(replyDrafts.get(key) || "")}</textarea>
-      <button type="button" class="chip accept" data-reply-send>发送</button></div></li>`;
+    ${d.level === "decide" ? otherAnswer(d, key) : `<div class="dreply" ${openReplies.has(key) ? "" : "hidden"}><textarea class="reply-text" rows="2" placeholder="写给这个会话的回复 · 回车发送，Option+回车换行" data-key="${esc(key)}">${esc(replyDrafts.get(key) || "")}</textarea>
+      <button type="button" class="chip accept" data-reply-send>发送</button></div>`}</li>`;
+}
+function taskTag(d) {
+  const b = allBoards().find(x => x.session === d.session && x.id === d.board);
+  const name = b?.name || d.board_name || d.story;
+  return name ? `<a class="task-tag" href="${b ? boardHref(b) : "#/"}" title="所属任务看板">${esc(name)}</a>` : `<span class="task-tag none" title="认不出属于哪个任务看板">未归属</span>`;
+}
+function otherAnswer(d, key) {
+  const index = (d.options || []).findIndex(o => /^Type something/.test(o));
+  return index < 0 ? "" : `<div class="dreply"><textarea class="reply-text" rows="1" placeholder="都不合适？自己写答案 · 回车提交" data-key="${esc(key)}">${esc(replyDrafts.get(key) || "")}</textarea>
+      <button type="button" class="chip accept" data-choose-text="${index + 1}" data-option="${esc(d.options[index])}">提交</button></div>`;
 }
 function decisionsBlock(decisions) {
   const group = (level, title) => { const list = decisions.filter(d => d.level === level); return list.length ? `<h3 class="dgroup">${title} · ${list.length}</h3><ul class="decisions">${list.map(decisionCard).join("")}</ul>` : ""; };
@@ -418,17 +435,24 @@ function decisionsBlock(decisions) {
 }
 const waitingTitle = decisions => decisions.length ? ` · ${decisions.length} 个会话在等你` : "";
 const openReplies = new Set(), replyDrafts = new Map();
+document.addEventListener("keydown", e => {
+  if (e.key !== "Enter" || !e.target.classList?.contains("reply-text") || e.isComposing || e.keyCode === 229 || e.shiftKey) return;
+  e.preventDefault();
+  if (e.altKey) { e.target.setRangeText("\n", e.target.selectionStart, e.target.selectionEnd, "end"); e.target.dispatchEvent(new Event("input", { bubbles: true })); return; }
+  e.target.closest("li.decision")?.querySelector("[data-choose-text], [data-reply-send]")?.click();
+});
 document.addEventListener("input", e => { if (e.target.classList?.contains("reply-text")) replyDrafts.set(e.target.dataset.key, e.target.value); });
 document.addEventListener("focusout", e => { if (e.target.classList?.contains("reply-text") && renderQueued) setTimeout(() => { renderQueued = false; render(false); }, 0); });
-async function chooseOption(card, number, option, button) {
-  const { session, pane } = card.dataset;
-  button.disabled = true;
+async function chooseOption(card, number, option, button, text = "") {
+  const { session, pane } = card.dataset, label = button.textContent;
+  button.disabled = true; button.textContent = "提交中…";
   try {
-    const res = await fetch("/api/choose", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, pane, number, option }) });
-    const data = await res.json().catch(() => ({ message: "选择失败" }));
-    toast(res.ok ? `已在 <b>${esc(card.querySelector(".dhead b").textContent)}</b> 里选择：${esc(option.slice(0, 60))}` : `没有选择：${esc(data.message)}`);
-  } catch { toast("没有选择：连不上看板服务"); }
-  button.disabled = false;
+    const res = await fetch("/api/choose", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, pane, number, option, text }) });
+    const data = await res.json().catch(() => ({ message: "提交失败" }));
+    toast(res.ok ? `已在 <b>${esc(card.querySelector(".dhead b").textContent)}</b> 里提交：${esc((text || option).slice(0, 60))}` : `没有提交：${esc(data.message)}`);
+    if (res.ok) { replyDrafts.delete(`${session}|${pane}`); const area = card.querySelector(".reply-text"); if (area) { area.value = ""; area.blur(); } }
+  } catch { toast("没有提交：连不上看板服务"); }
+  button.disabled = false; button.textContent = label;
 }
 async function sendReply(card, text, button) {
   const { session, pane } = card.dataset;
@@ -437,15 +461,16 @@ async function sendReply(card, text, button) {
     const res = await fetch("/api/reply", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, pane, text }) });
     const data = await res.json().catch(() => ({ message: "发送失败" }));
     toast(res.ok ? `已发给 <b>${esc(card.querySelector(".dhead b").textContent)}</b>：${esc(text.slice(0, 60))}` : `没有发送：${esc(data.message)}`);
-    if (res.ok) { const key = `${session}|${pane}`; replyDrafts.delete(key); openReplies.delete(key); }
+    if (res.ok) { const key = `${session}|${pane}`, area = card.querySelector(".reply-text"); replyDrafts.delete(key); openReplies.delete(key); if (area) { area.value = ""; area.blur(); } card.querySelector(".dreply").hidden = true; }
   } catch { toast("没有发送：连不上看板服务"); }
   button.disabled = false;
 }
 document.addEventListener("click", e => {
   const card = e.target.closest("li.decision"); if (!card) return;
   const key = `${card.dataset.session}|${card.dataset.pane}`, area = card.querySelector(".reply-text");
-  const choose = e.target.closest("[data-choose]");
+  const choose = e.target.closest("[data-choose]"), chooseText = e.target.closest("[data-choose-text]");
   if (choose) { chooseOption(card, Number(choose.dataset.choose), choose.dataset.option, choose); return; }
+  if (chooseText) { const text = area.value.trim(); if (text) chooseOption(card, Number(chooseText.dataset.chooseText), chooseText.dataset.option, chooseText, text); else area.focus(); return; }
   if (e.target.closest("[data-reply-open]")) { openReplies.add(key); card.querySelector(".dreply").hidden = false; area.focus(); }
   else if (e.target.closest("[data-option]")) { openReplies.add(key); card.querySelector(".dreply").hidden = false; area.value = e.target.closest("[data-option]").dataset.option; replyDrafts.set(key, area.value); area.focus(); }
   else if (e.target.closest("[data-send]")) sendReply(card, e.target.closest("[data-send]").dataset.send, e.target.closest("[data-send]"));
@@ -671,7 +696,7 @@ const CONVENTIONAL_PHASES = [{ label: "方案" }, { label: "AC", auto: "ac" }, {
 function phasesOf(b) {
   if ((b.phases || []).length) return b.phases.map(phaseView(b));
   if (!(b.rows || []).length && !implTotals(b).total && !b.closeout?.exists) return [];
-  const views = CONVENTIONAL_PHASES.map(phaseView(b));
+  const views = CONVENTIONAL_PHASES.map(p => p.auto === "impl" && !implTotals(b).total ? { label: p.label } : phaseView(b)(p));
   return views.map((p, i) => !p.state && views.slice(i + 1).some(q => q.state) ? { ...p, state: "done" } : p);
 }
 const openPlans = new Set();
@@ -1042,6 +1067,7 @@ function connect() {
   stream.onmessage = e => {
     const data = JSON.parse(e.data);
     if (streamFocus !== focusKey()) return;
+    reloadIfStale(data);
     live.classList.add("on"); STATE = data; render(false); liveText.textContent = "实时 · " + (STATE.updated || "").slice(11);
   };
   stream.onerror = () => { live.classList.remove("on"); liveText.textContent = "连接断开，重连中…"; };
@@ -1050,7 +1076,7 @@ function loadState() {
   if (stateLoading) return;
   stateLoading = true;
   fetch(`/api/state?board=${encodeURIComponent(focusKey())}`).then(r => r.json())
-    .then(d => { if (d.sessions) { STATE = d; scrollToFocus = true; render(true); } })
+    .then(d => { if (d.sessions) { reloadIfStale(d); STATE = d; scrollToFocus = true; render(true); } })
     .catch(() => {}).finally(() => { stateLoading = false; });
 }
 loadState();

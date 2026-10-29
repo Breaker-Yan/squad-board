@@ -25,6 +25,9 @@ APPROVAL = re.compile(
 )
 QUESTION_LIMIT = 400
 SHORT_QUESTION_LIMIT = 60
+REPORT_MIN = 40
+RECAP_HINT = re.compile(r"\s*\(disable recaps in /config\)\s*$")
+TOOL_OUTPUT = re.compile(r"⎿|^\s*(?:[A-Z][A-Za-z]+\(|(?:Ran|Read|Searched|Wrote|Edited|Updated|Listed) \d)")
 
 
 def _cells(line):
@@ -132,7 +135,7 @@ def _read_recap(body):
             while end < len(body) and body[end].strip() and not RULE.match(body[end]) and not NEW_TASK_HINT.search(body[end]):
                 parts.append(body[end].strip())
                 end += 1
-            return _join_wrapped([part for part in parts if part]), set(range(index, end))
+            return RECAP_HINT.sub("", _join_wrapped([part for part in parts if part])).strip(), set(range(index, end))
     return "", set()
 
 
@@ -173,11 +176,12 @@ def _read_blocked(plain):
     last = next((i for i in range(len(plain) - 1, -1, -1) if SELECT_OPTION.match(plain[i])), None)
     if last is None:
         return None
-    options, index = [], last
+    options, positions, index = [], [], last
     while index >= 0:
         match = SELECT_OPTION.match(plain[index])
         if match:
             options.insert(0, match.group(2).strip())
+            positions.insert(0, index)
             if match.group(1) == "1":
                 break
         index -= 1
@@ -193,7 +197,18 @@ def _read_blocked(plain):
         above -= 1
     question_text = _clip_tail(_join_wrapped(question))
     kind = "approval" if APPROVAL.search(question_text + " " + " ".join(options)) else "choice"
-    return kind, question_text, options
+    cursor = next((i for i, position in enumerate(positions) if plain[position].lstrip().startswith("❯")), -1)
+    return kind, question_text, options, [_option_detail(plain, position) for position in positions], cursor
+
+
+def _option_detail(plain, position):
+    marker = SELECT_OPTION.match(plain[position]).start(1)
+    lines = []
+    for line in plain[position + 1:]:
+        if not line.strip() or SELECT_OPTION.match(line) or RULE.match(line) or _indent(line) <= marker:
+            break
+        lines.append(line.strip())
+    return _join_wrapped(lines)
 
 
 def _read_decision(body, recap):
@@ -222,6 +237,16 @@ def _read_decision(body, recap):
     return None
 
 
+def _last_words(cleaned):
+    turn_start = next((i for i in range(len(cleaned) - 1, -1, -1) if cleaned[i].lstrip().startswith("❯")), -1)
+    cleaned = cleaned[turn_start + 1:]
+    paragraphs = [_join_wrapped([line.strip() for line in block]) for block in _blocks(cleaned)]
+    taken = []
+    while paragraphs and len(taken) < 3 and sum(map(len, taken)) < REPORT_MIN and not TOOL_OUTPUT.search(paragraphs[-1]):
+        taken.insert(0, paragraphs.pop())
+    return _clip_tail("\n".join(taken))
+
+
 def parse_screen(ansi, status):
     if status == "working":
         return None
@@ -244,16 +269,16 @@ def parse_screen(ansi, status):
     decision = None
     if status == "blocked":
         decision = _read_blocked(plain)
+    details, cursor = [], -1
     if decision:
-        kind, question, options = decision
+        kind, question, options, details, cursor = decision
     else:
         found = _read_decision(cleaned, recap)
         if found:
             kind, (question, options) = "question", found
         elif done_at or recap:
-            last = _blocks(cleaned)
-            kind, question, options = "report", _clip_tail(_join_wrapped([line.strip() for line in last[-1]])) if last else recap, []
+            kind, question, options = "report", _last_words(cleaned) or recap, []
         else:
             return None
-    return dict(kind=kind, question=question, options=options, suggestion=suggestion, recap=recap, done_at=done_at,
+    return dict(kind=kind, question=question, options=options, details=details, cursor=cursor, suggestion=suggestion, recap=recap, done_at=done_at,
                 shells=int(shells.group(1)) if shells else 0)

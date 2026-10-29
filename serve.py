@@ -638,7 +638,8 @@ def snapshot():
             views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
         for decision in waiting:
             decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces)
-            workers = next((v.get("workers", []) for v in views if v["id"] == decision["board"]), [])
+            view = next((v for v in views if v["id"] == decision["board"]), {})
+            workers, decision["board_name"] = view.get("workers", []), view.get("name", "")
             decision["background"] = decision["level"] == "stopped" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))
         decisions += waiting
         if views:
@@ -647,7 +648,7 @@ def snapshot():
     if idle:
         sessions.append(dict(name="工作区（无 herdr 会话）", alive=True,
                              boards=[dict(board_snapshot("workspace", story_board(story, [], {}), [], {}, exact=True), auto=True) for story in idle]))
-    return dict(sessions=sessions, decisions=decisions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
+    return dict(sessions=sessions, decisions=decisions, build=int(os.path.getmtime(os.path.join(HERE, "index.html"))), archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
 
 
 def keyed(items, key, value):
@@ -769,14 +770,15 @@ def notices(decisions, before, keys):
 
 
 def notify(decision):
+    task = decision.get("board_name") or decision.get("story") or decision["session"]
     title, message = f"{LEVEL_NOTICE[decision['level']]} · {decision['title']}", " ".join((decision.get("recap") or decision["question"]).split())[:160]
     notifier = shutil.which("terminal-notifier") or next((p for p in ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier") if os.path.exists(p)), None)
     if notifier:
-        command = [notifier, "-title", "squad-board", "-subtitle", title, "-message", message, "-group", f"squad-board:{decision['session']}:{decision['pane']}"]
+        command = [notifier, "-title", f"squad-board · {task}", "-subtitle", title, "-message", message, "-group", f"squad-board:{decision['session']}:{decision['pane']}"]
         command += ["-open", board_url] if board_url else []
     else:
         quote = lambda text: json.dumps(text, ensure_ascii=False)
-        command = ["osascript", "-e", f"display notification {quote(message)} with title \"squad-board\" subtitle {quote(title)}"]
+        command = ["osascript", "-e", f"display notification {quote(message)} with title {quote(f"squad-board · {task}")} subtitle {quote(title)}"]
     try:
         subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except OSError as error:
@@ -827,21 +829,36 @@ def awaiting(session, pane):
     return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane), None)
 
 
-def send_choice(session, pane, number, option):
+def send_choice(session, pane, number, option, text=""):
     from decisions import parse_screen
+    read_prompt = lambda: parse_screen(read_screen(session, pane), "blocked") or {}
     decision = awaiting(session, pane)
     if not decision:
         return 404, "这个会话现在没有在等你决定"
     if decision.get("kind") not in ("choice", "approval"):
         return 409, "这不是选择框，请用回复"
-    live = parse_screen(read_screen(session, pane), "blocked")
-    options = (live or {}).get("options", [])
-    if not live or live.get("question") != decision.get("question") or not isinstance(number, int) \
-            or not 1 <= number <= len(options) or options[number - 1] != option:
+    text = " ".join(str(text or "").split())
+    if len(text) > 500 or (text and not str(option).startswith("Type something")):
+        return 400, "自己写的答案只能填在 Type something 这一项，且不超过 500 字"
+    live = read_prompt()
+    options = live.get("options", [])
+    if live.get("question") != decision.get("question") or not isinstance(number, int) \
+            or not 1 <= number <= len(options) or options[number - 1] != option or live.get("cursor", -1) < 0:
         return 409, "会话里的选择框已经变了，没有发送；等看板刷新后再选"
-    run(["herdr", "--session", session, "pane", "send-text", pane, str(number)], timeout=10)
+    steps = number - 1 - live["cursor"]
+    for _ in range(abs(steps)):
+        run(["herdr", "--session", session, "pane", "send-keys", pane, "Down" if steps > 0 else "Up"], timeout=10)
+    moved = read_prompt()
+    if moved.get("question") != decision.get("question") or moved.get("cursor") != number - 1:
+        return 409, "没能把光标移到这一项，没有提交；请到会话里处理"
+    if text:
+        run(["herdr", "--session", session, "pane", "send-text", pane, text], timeout=10)
+        typed = read_prompt().get("options", [])
+        if len(typed) < number or not typed[number - 1].startswith(text[:20]):
+            return 409, "答案没有出现在会话的输入行里，没有提交；请到会话里处理"
+    run(["herdr", "--session", session, "pane", "send-keys", pane, "Enter"], timeout=10)
     screen_cache.pop((session, pane), None)
-    return 200, "已选择"
+    return 200, "已提交"
 
 
 def send_reply(session, pane, text):
@@ -851,7 +868,7 @@ def send_reply(session, pane, text):
         return 404, "这个会话现在没有在等你决定"
     if decision.get("kind") not in ("question", "report"):
         return 409, "这是选择框或权限确认，请直接点选项"
-    text = " ".join(str(text).split())
+    text = "\n".join(" ".join(line.split()) for line in str(text).splitlines()).strip()
     if not text or len(text) > 2000:
         return 400, "回复不能为空，也不能超过 2000 字"
     box = input_state(read_screen(session, pane))
@@ -1054,7 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
                 json.dump(sorted(keys), fh, ensure_ascii=False)
             return reply(200, dict(ok=True))
         if path == "/api/choose":
-            code, message = send_choice(body.get("session", ""), body.get("pane", ""), body.get("number"), body.get("option", ""))
+            code, message = send_choice(body.get("session", ""), body.get("pane", ""), body.get("number"), body.get("option", ""), body.get("text", ""))
             return reply(code, dict(ok=code == 200, message=message))
         if path == "/api/reply":
             code, message = send_reply(body.get("session", ""), body.get("pane", ""), body.get("text", ""))
