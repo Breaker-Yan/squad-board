@@ -532,7 +532,7 @@ function renderBoardShell(b) {
     <section class="panel needs" aria-labelledby="h-needs" id="needs-sec"><h2 id="h-needs">需要你</h2><div id="needs"></div></section>
     <section aria-labelledby="h-agents"><h2 id="h-agents">Workers · 按 W· tab</h2><div id="agents"></div></section>
     <div class="side-grid" id="side"></div>
-    ${hasRows && cards.length > 1 ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
+    ${hasRows && cards.length ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
     ${hasRows ? `<section class="panel" aria-labelledby="h-table"><h2 id="h-table">逐条 AC（点击查看截图与核对意见）</h2>
       <div class="filters">${cards.length > 1 ? `<select id="f-card" aria-label="卡"><option value="">全部卡</option>${cards.map(c => `<option value="${esc(c)}">${esc(c)} ${esc(b.cards[c])}</option>`).join("")}</select>` : ""}
         <input id="f-q" type="search" placeholder="搜索 AC、类别、结论…" aria-label="搜索"><span id="f-group"></span><span class="count mono" id="f-count"></span></div>
@@ -818,9 +818,9 @@ function renderCards(b) {
   const box = document.getElementById("cards"); if (!box) return;
   put(box).innerHTML = Object.entries(b.cards).map(([code, name]) => {
     const all = (b.rows || []).filter(r => r.card === code), rows = counted({ ...b, rows: all });
-    if (rows.length) return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span><span class="name">${esc(name)}</span><div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></button>`;
+    if (rows.length) return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span>${name !== code ? `<span class="name">${esc(name)}</span>` : ""}<div class="bar">${barHtml(b, rows)}</div><span class="meta mono">${rows.filter(r => r.status === "PASS").length} 通过 / ${rows.length} 可测 · 共 ${all.length}</span></button>`;
     const chips = (b.plans || []).filter(p => (p.covers || []).includes(code)).map(p => { const st = p.tracked ? progressState(p.done, p.tasks) : p.state === "done" ? "done" : "now"; return `<span class="pill mono" style="color:var(--${st === "done" ? "pass" : st === "now" ? "info" : "muted"})">${esc(p.id)} ${p.tracked ? `${p.done}/${p.tasks}` : p.state === "done" ? "✓" : "…"}</span>`; }).join(" ");
-    return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span><span class="name">${esc(name)}</span><div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></button>`;
+    return `<button type="button" class="card" data-card="${esc(code)}" aria-pressed="${filters.card === code}" title="AC 表只看这张卡"><span class="code">${esc(code)}${demoBadge(b, code)}</span>${name !== code ? `<span class="name">${esc(name)}</span>` : ""}<div class="meta">${all.length} 条待验${chips ? " · 子计划" : ""}</div><div style="display:flex;flex-wrap:wrap;gap:4px">${chips}</div></button>`;
   }).join("");
 }
 

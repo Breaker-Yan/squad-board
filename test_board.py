@@ -177,7 +177,20 @@ def test_recent_story_without_agents_is_found():
         assert serve.recent_stories([ws], {os.path.join(base, "TASK-3")}) == []
 
 
+def test_brief_report_pairs_become_dev_progress():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        docs = os.path.join(root, "docs")
+        os.makedirs(docs)
+        for name, body in {"brief-fe.md": "# 任务书：前端带出时区\n", "report-fe.md": "STATUS: done\n",
+                           "brief-deploy.md": "# 部署\n", "report-deploy.md": "STATUS: in-progress\n",
+                           "brief-deploy-addendum.md": "# 部署补充\n", "brief-api.md": "# 接口\n"}.items():
+            open(os.path.join(docs, name), "w", encoding="utf-8").write(body)
+        got = {p["id"]: (p["scope"], p["done"], (p["impl"] or {}).get("state")) for p in serve.plans(dict(root=root))}
+        assert got == {"api": ("接口", 0, None), "deploy": ("部署", 0, "in-progress"), "fe": ("前端带出时区", 1, "done")}
+
+
 if __name__ == "__main__":
+    test_brief_report_pairs_become_dev_progress()
     test_recent_story_without_agents_is_found()
     test_report_follows_newer_status_file_in_same_folder()
     test_only_workers_gone_mid_task_need_attention()

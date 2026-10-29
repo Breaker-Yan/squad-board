@@ -313,9 +313,44 @@ def plan_part(root, part, label):
     return tasks, impl, files
 
 
+def first_heading(path):
+    for line in open(path, encoding="utf-8"):
+        if line.startswith("# "):
+            return line[2:].strip()
+    return ""
+
+
+def conventional_plans(root):
+    if not root:
+        return [], []
+    planned = {}
+    for path in sorted(glob.glob(os.path.join(root, "docs", "plans", "*.md"))):
+        if PLAN_TASK.search(open(path, encoding="utf-8").read()):
+            planned.setdefault(os.path.basename(path).split("-")[0].split(".")[0], []).append(os.path.relpath(path, root))
+    if planned:
+        return [dict(id=pid, files=files, progress=f"docs/exec/STATUS-{pid}.md") for pid, files in planned.items()], []
+    briefs = {os.path.basename(p)[len("brief-"):-3]: p for p in sorted(glob.glob(os.path.join(root, "docs", "brief-*.md")))}
+    reported = {k for k in briefs if os.path.isfile(os.path.join(root, "docs", f"report-{k}.md"))}
+    items = []
+    for key, path in briefs.items():
+        if key not in reported and any(key.startswith(k + "-") for k in reported):
+            continue
+        title = re.sub(r"^任务书[:：]\s*", "", first_heading(path)) or key
+        report_rel = f"docs/report-{key}.md"
+        found = report_status(root, report_rel) if key in reported else None
+        done = bool(found and found["state"] == "done")
+        items.append(dict(id=key, repo="", scope=title, covers=[], state="done", tasks=1, done=int(done),
+                          task_list=[dict(id=key, title=title, part="", done=done, sha="", note=found["detail"] if found else "还没有报告")],
+                          impl=dict(state=found["state"], detail=found["detail"], mtime=found["mtime"]) if found else None, tracked=True,
+                          files=[dict(label="", plan=[os.path.relpath(path, root)], progress=[found["file"]] if found else [])]))
+    return [], items
+
+
 def plans(board):
     out = []
-    for plan in board.get("plans", []):
+    configured, items = (board.get("plans"), []) if board.get("plans") else conventional_plans(board.get("root", ""))
+    out += items
+    for plan in configured:
         files = globbed(board["root"], plan["files"])
         status = report_status(board["root"], plan["files"])
         parts = plan.get("parts") or [dict(plan=plan["files"], progress=plan.get("progress"))]
@@ -426,7 +461,11 @@ def board_snapshot(session, board, agents, tabs, exact=None):
                 rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board), closeout=closeout(board),
                 demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
     if not data["cards"] and data["rows"]:
-        data["cards"] = {card: card for card in dict.fromkeys(r["card"] for r in data["rows"])}
+        spec = ac_spec(board)
+        title = first_heading(os.path.join(root, spec["file"])) if spec and spec.get("file") else ""
+        codes = list(dict.fromkeys(r["card"] for r in data["rows"]))
+        name = re.sub(r"\bAC\b|验收标准|[A-Z]+-\d+", "", title).strip(" ·:：-—") if len(codes) == 1 else ""
+        data["cards"] = {card: name or card for card in codes}
     data["needs"] = needs(data)
     return data
 
