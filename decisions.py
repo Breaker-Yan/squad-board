@@ -5,6 +5,7 @@ RULE = re.compile(r"\s*─{3,}")
 TABLE_ROW = re.compile(r"\s*[┌├└│┬┴┼┐┤┘]")
 LIST_ITEM = re.compile(r"^(\s*)([-*•]|\d+[.、)])\s+(.*)")
 SELECT_OPTION = re.compile(r"^\s*(?:❯\s*)?(\d+)[.)]\s+(.+)")
+PROMPT_CHROME = re.compile(r"^\s*(?:╌{3,}|Tip:)")
 RECAP_LINE = re.compile(r"\s*※\s*recap:?\s*(.*)")
 TURN_END_LINE = re.compile(r"\bfor \d+\s*[smh]\b.*·\s*done")
 DONE_AT = re.compile(r"·\s*done\s+(\d{1,2}:\d{2}(?:\s?[AP]M)?)")
@@ -13,7 +14,7 @@ TITLE = re.compile(r"Things only you can decide|(?:需要|要|待|等)你(?:来)
 ASK = re.compile(
     r"[？]|\?(?:\s|$)|要不要|是否要|要我[^。！\n]{0,30}吗"
     r"|(?:请|需要|要|等|待|由)你(?:来|先|一并|再)?(?:决定|确认|判断|拍板|定|选|回复|回答)"
-    r"|你(?:来)?(?:决定|判断|拍板)|should i\b|do you want|would you like",
+    r"|你来(?:决定|判断|拍板)|should i\b|do you want|would you like",
     re.I,
 )
 APPROVAL = re.compile(
@@ -185,7 +186,8 @@ def _read_blocked(plain):
         above -= 1
     question = []
     while above >= 0 and plain[above].strip() and not RULE.match(plain[above]):
-        question.insert(0, plain[above].strip())
+        if not PROMPT_CHROME.match(plain[above]):
+            question.insert(0, plain[above].strip())
         above -= 1
     question_text = _clip_tail(_join_wrapped(question))
     kind = "approval" if APPROVAL.search(question_text + " " + " ".join(options)) else "choice"

@@ -331,6 +331,38 @@ def test_decision_belongs_to_subscribable_board():
     assert pick(tab="1") == ""
     assert serve.board_of_decision(dict(story="", tab="1"), [], {}, ["auto"], ws) == "auto"
 
+def test_permission_prompt_question_skips_separators_and_tips():
+    screen = "\n".join([
+        "\u2500" * 40,
+        " Bash command",
+        " Tip: auto mode handles these prompts for you",
+        " Create test file",
+        "\u254c" * 40,
+        " touch notes.txt",
+        "\u254c" * 40,
+        " Do you want to proceed?",
+        " \u276f 1. Yes",
+        "   2. Yes, and always allow access to this folder",
+        "   3. No",
+        " Esc to cancel",
+    ])
+    parsed = decisions.parse_screen(screen, "blocked")
+    assert parsed["kind"] == "approval"
+    assert "\u254c" not in parsed["question"] and "Tip" not in parsed["question"]
+    assert "touch notes.txt" in parsed["question"] and parsed["question"].startswith("Bash command")
+    assert parsed["options"][0] == "Yes" and parsed["options"][-1] == "No"
+
+def test_past_decision_in_recap_is_not_a_question():
+    report = "\n".join([
+        "\u23fa Lint is still running; I will tell you when the deploy is done.",
+        "\u273b Crunched for 37s \u00b7 done 1:19 PM",
+        "\u203b recap: \u4f60\u51b3\u5b9a\u5728\u672c\u5361\u4fee\u7684\u95ee\u9898\u6b63\u5728\u4fee\uff0c\u90e8\u7f72\u540e\u6211\u4f1a\u6d3e QA \u56de\u5f52\uff0c\u518d\u7ed9\u4f60\u6700\u7ec8\u7ed3\u8bba\u3002",
+        "\u2500" * 40, "\u276f ", "\u2500" * 40,
+    ])
+    assert decisions.parse_screen(report, "done") is None
+    asking = report.replace("\u4f60\u51b3\u5b9a\u5728", "\u4e0b\u4e00\u6b65\u9700\u8981\u4f60\u51b3\u5b9a\u5728")
+    assert decisions.parse_screen(asking, "done")["kind"] == "question"
+
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
     test_event_log_is_trimmed()
@@ -358,4 +390,6 @@ if __name__ == "__main__":
     test_blocked_choice_box_and_permission_prompt()
     test_short_question_takes_options_from_the_list_above()
     test_decision_belongs_to_subscribable_board()
+    test_permission_prompt_question_skips_separators_and_tips()
+    test_past_decision_in_recap_is_not_a_question()
     print("ok")

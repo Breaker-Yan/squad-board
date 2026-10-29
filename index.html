@@ -74,6 +74,7 @@ table.mini td { padding: 3px 6px; }
 .dopts { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
 .dopt { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 0; padding: 2px 4px; border-radius: 4px; text-align: left; cursor: pointer; }
 .dopt:hover { background: var(--panel); color: var(--accent); }
+.dopt.choose { border: 1px solid var(--accent); margin: 2px 0; }
 .dacts { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip.accept { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .dreply { display: flex; gap: 6px; align-items: flex-end; }
@@ -391,14 +392,17 @@ document.addEventListener("click", async e => {
   } catch { toast("定位失败：连不上看板服务"); }
 });
 const KIND_LABEL = { choice: "选择框", approval: "权限确认" };
+const SELECT_CHROME = /^(Type something|Chat about this)/;
 function decisionCard(d) {
   const key = `${d.session}|${d.pane}`;
   return `<li class="decision" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
     <div class="dhead"><b>${esc(d.title)}</b><span class="chip mono">${esc(d.session)}</span>${d.story ? `<span class="chip mono">${esc(d.story)}</span>` : ""}
       ${KIND_LABEL[d.kind] ? `<span class="pill" style="color:var(--warn)">${KIND_LABEL[d.kind]}</span>` : ""}<span class="s mono">${d.done_at ? `${esc(d.done_at)} 起在等` : "在等你"}</span></div>
-    ${d.recap ? `<div class="recap">${esc(d.recap)}</div>` : ""}
+    ${d.recap && d.recap !== d.question ? `<div class="recap">${esc(d.recap)}</div>` : ""}
     <div class="pre dq">${esc(d.question)}</div>
-    ${(d.options || []).length ? `<ol class="dopts">${d.options.map(o => `<li><button type="button" class="dopt" data-option="${esc(o)}" title="填进回复框">${esc(o)}</button></li>`).join("")}</ol>` : ""}
+    ${(d.options || []).length ? `<ol class="dopts">${d.options.map((o, i) => d.kind === "question"
+      ? `<li><button type="button" class="dopt" data-option="${esc(o)}" title="填进回复框">${esc(o)}</button></li>`
+      : SELECT_CHROME.test(o) ? "" : `<li><button type="button" class="dopt choose" data-choose="${i + 1}" data-option="${esc(o)}" title="直接在会话里选这一项">${esc(o)}</button></li>`).join("")}</ol>` : ""}
     <div class="dacts">
       ${d.suggestion && d.kind === "question" ? `<button type="button" class="chip accept" data-send="${esc(d.suggestion)}">采纳建议：「${esc(d.suggestion)}」</button>` : ""}
       ${d.kind === "question" ? `<button type="button" class="chip" data-reply-open>回复…</button>` : ""}
@@ -413,6 +417,16 @@ function decisionsBlock(decisions) {
 const openReplies = new Set(), replyDrafts = new Map();
 document.addEventListener("input", e => { if (e.target.classList?.contains("reply-text")) replyDrafts.set(e.target.dataset.key, e.target.value); });
 document.addEventListener("focusout", e => { if (e.target.classList?.contains("reply-text") && renderQueued) setTimeout(() => { renderQueued = false; render(false); }, 0); });
+async function chooseOption(card, number, option, button) {
+  const { session, pane } = card.dataset;
+  button.disabled = true;
+  try {
+    const res = await fetch("/api/choose", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ session, pane, number, option }) });
+    const data = await res.json().catch(() => ({ message: "选择失败" }));
+    toast(res.ok ? `已在 <b>${esc(card.querySelector(".dhead b").textContent)}</b> 里选择：${esc(option.slice(0, 60))}` : `没有选择：${esc(data.message)}`);
+  } catch { toast("没有选择：连不上看板服务"); }
+  button.disabled = false;
+}
 async function sendReply(card, text, button) {
   const { session, pane } = card.dataset;
   button.disabled = true;
@@ -427,6 +441,8 @@ async function sendReply(card, text, button) {
 document.addEventListener("click", e => {
   const card = e.target.closest("li.decision"); if (!card) return;
   const key = `${card.dataset.session}|${card.dataset.pane}`, area = card.querySelector(".reply-text");
+  const choose = e.target.closest("[data-choose]");
+  if (choose) { chooseOption(card, Number(choose.dataset.choose), choose.dataset.option, choose); return; }
   if (e.target.closest("[data-reply-open]")) { openReplies.add(key); card.querySelector(".dreply").hidden = false; area.focus(); }
   else if (e.target.closest("[data-option]")) { openReplies.add(key); card.querySelector(".dreply").hidden = false; area.value = e.target.closest("[data-option]").dataset.option; replyDrafts.set(key, area.value); area.focus(); }
   else if (e.target.closest("[data-send]")) sendReply(card, e.target.closest("[data-send]").dataset.send, e.target.closest("[data-send]"));

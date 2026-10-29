@@ -781,6 +781,23 @@ def awaiting(session, pane):
     return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane), None)
 
 
+def send_choice(session, pane, number, option):
+    from decisions import parse_screen
+    decision = awaiting(session, pane)
+    if not decision:
+        return 404, "这个会话现在没有在等你决定"
+    if decision.get("kind") not in ("choice", "approval"):
+        return 409, "这不是选择框，请用回复"
+    live = parse_screen(read_screen(session, pane), "blocked")
+    options = (live or {}).get("options", [])
+    if not live or live.get("question") != decision.get("question") or not isinstance(number, int) \
+            or not 1 <= number <= len(options) or options[number - 1] != option:
+        return 409, "会话里的选择框已经变了，没有发送；等看板刷新后再选"
+    run(["herdr", "--session", session, "pane", "send-text", pane, str(number)], timeout=10)
+    screen_cache.pop((session, pane), None)
+    return 200, "已选择"
+
+
 def send_reply(session, pane, text):
     from decisions import input_state
     decision = awaiting(session, pane)
@@ -972,7 +989,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply"):
+        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply", "/api/choose"):
             return self.send(404, b"not found", "text/plain")
         if self.client_address[0] not in LOCAL_CLIENTS:
             return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
@@ -983,6 +1000,9 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError):
             return self.send(400, b"bad request", "text/plain")
         reply = lambda code, data: self.send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        if path == "/api/choose":
+            code, message = send_choice(body.get("session", ""), body.get("pane", ""), body.get("number"), body.get("option", ""))
+            return reply(code, dict(ok=code == 200, message=message))
         if path == "/api/reply":
             code, message = send_reply(body.get("session", ""), body.get("pane", ""), body.get("text", ""))
             return reply(code, dict(ok=code == 200, message=message))
