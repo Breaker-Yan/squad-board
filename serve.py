@@ -640,7 +640,7 @@ def snapshot():
             decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces)
             view = next((v for v in views if v["id"] == decision["board"]), {})
             workers, decision["board_name"] = view.get("workers", []), view.get("name", "")
-            decision["background"] = decision["level"] == "stopped" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))
+            decision["background"] = decision["kind"] == "report" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))
         decisions += waiting
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
@@ -750,6 +750,24 @@ board_url = ""
 notified = None
 
 
+def notified_path():
+    return os.path.join(REGISTRY, ".state", "notified.json")
+
+
+def load_notified():
+    try:
+        with open(notified_path(), encoding="utf-8") as fh:
+            return {tuple(k.split("|", 1)): tuple(v) for k, v in json.load(fh).items()}
+    except (OSError, ValueError, TypeError, AttributeError):
+        return None
+
+
+def save_notified(seen):
+    os.makedirs(os.path.dirname(notified_path()), exist_ok=True)
+    with open(notified_path(), "w", encoding="utf-8") as fh:
+        json.dump({"|".join(k): list(v) for k, v in seen.items()}, fh, ensure_ascii=False)
+
+
 def subscriptions():
     try:
         with open(os.path.join(REGISTRY, "subscriptions.json"), encoding="utf-8") as fh:
@@ -771,7 +789,8 @@ def notices(decisions, before, keys):
 
 def notify(decision):
     task = decision.get("board_name") or decision.get("story") or decision["session"]
-    title, message = f"{LEVEL_NOTICE[decision['level']]} · {decision['title']}", " ".join((decision.get("recap") or decision["question"]).split())[:160]
+    said = decision["question"] if decision["level"] == "decide" else decision.get("recap") or decision["question"]
+    title, message = f"{LEVEL_NOTICE[decision['level']]} · {decision['title']}", " ".join(said.split())[:160]
     notifier = shutil.which("terminal-notifier") or next((p for p in ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier") if os.path.exists(p)), None)
     if notifier:
         command = [notifier, "-title", f"squad-board · {task}", "-subtitle", title, "-message", message, "-group", f"squad-board:{decision['session']}:{decision['pane']}"]
@@ -790,9 +809,12 @@ def poll():
     while True:
         try:
             data = snapshot()
-            notified, fresh = notices(data["decisions"], notified, subscriptions())
+            current, fresh = notices(data["decisions"], notified if notified is not None else load_notified() or {}, subscriptions())
             for decision in fresh:
                 notify(decision)
+            if current != notified:
+                save_notified(current)
+            notified = current
         except Exception as error:
             print("snapshot failed:", error, file=sys.stderr)
             time.sleep(5)

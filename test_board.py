@@ -411,6 +411,17 @@ def test_choice_options_keep_their_descriptions():
     assert parsed["cursor"] == 0
     assert decisions.parse_screen(screen.replace("\u276f 1.", "  1.").replace("  4. Chat", "\u276f 4. Chat"), "blocked")["cursor"] == 3
 
+def test_notified_waits_survive_a_restart():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        serve.REGISTRY = root
+        assert serve.load_notified() is None
+        ask = dict(session="s", pane="w1:p1", board="b", level="stopped", done_at="1:00 PM", question="Merge?")
+        seen, _ = serve.notices([ask], {}, None)
+        serve.save_notified(seen)
+        restored = serve.load_notified()
+        assert serve.notices([ask], restored, None)[1] == []
+        assert serve.notices([dict(ask, question="Deploy?")], restored, None)[1] != []
+
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
     test_event_log_is_trimmed()
@@ -442,4 +453,5 @@ if __name__ == "__main__":
     test_past_decision_in_recap_is_not_a_question()
     test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed()
     test_choice_options_keep_their_descriptions()
+    test_notified_waits_survive_a_restart()
     print("ok")
