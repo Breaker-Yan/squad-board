@@ -593,12 +593,12 @@ def lead_decisions(session, agents, tabs, workspaces):
     return out
 
 
-def board_of_decision(decision, boards, stories, view_ids, workspaces):
+def board_of_decision(decision, boards, stories, view_ids, workspaces, lead_count=1):
     board_of_story = {os.path.basename(story): f"story-{os.path.basename(story)}" for story in stories}
     board_of_story.update({os.path.basename(s): b["id"] for b in boards if (s := story_of(b.get("root", ""), workspaces))})
     tab = decision.get("tab", "")
     by_tab = next((b["id"] for b in boards if tab and (tab in (b["id"], b.get("name")) or claims(f"W·{tab}", b.get("tabs", [])))), "")
-    return board_of_story.get(decision["story"]) or by_tab or (view_ids[0] if len(view_ids) == 1 else "")
+    return board_of_story.get(decision["story"]) or by_tab or (view_ids[0] if len(view_ids) == 1 and lead_count == 1 else "")
 
 
 def snapshot():
@@ -637,7 +637,7 @@ def snapshot():
         if loose:
             views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
         for decision in waiting:
-            decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces)
+            decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces, len(leads))
             view = next((v for v in views if v["id"] == decision["board"]), {})
             workers, decision["board_name"] = view.get("workers", []), view.get("name", "")
             decision["background"] = decision["kind"] == "report" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))

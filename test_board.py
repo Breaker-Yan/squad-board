@@ -342,6 +342,8 @@ def test_decision_belongs_to_subscribable_board():
     assert pick(tab="Beta") == "beta"
     assert pick(tab="1") == ""
     assert serve.board_of_decision(dict(story="", tab="1"), [], {}, ["auto"], ws) == "auto"
+    other_lead = dict(story="", tab="DONE-1")
+    assert serve.board_of_decision(other_lead, [dict(id="NEW-2", root="/w/NEW-2", tabs=["W·NEW-2"])], {}, ["NEW-2"], ws, lead_count=2) == ""
 
 def test_permission_prompt_question_skips_separators_and_tips():
     screen = "\n".join([
