@@ -587,6 +587,7 @@ def lead_decisions(session, agents, tabs, workspaces):
         if cached["parsed"]:
             story = story_of(agent_dir(agent), workspaces)
             out.append(dict(cached["parsed"], session=session, pane=agent["pane_id"], status=agent["agent_status"],
+                            level="decide" if cached["parsed"]["kind"] in ("choice", "approval") else "stopped",
                             title=agent.get("terminal_title_stripped") or "lead", story=os.path.basename(story) if story else "",
                                    tab=tabs.get(agent["tab_id"], "")))
     return out
@@ -637,6 +638,8 @@ def snapshot():
             views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
         for decision in waiting:
             decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces)
+            workers = next((v.get("workers", []) for v in views if v["id"] == decision["board"]), [])
+            decision["background"] = decision["level"] == "stopped" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))
         decisions += waiting
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
@@ -741,10 +744,53 @@ def record(old, new):
             board["events"] = list(reversed(log[-60:]))
 
 
+LEVEL_NOTICE = {"decide": "🔴 需要你决定", "stopped": "🟡 停下等你"}
+board_url = ""
+notified = None
+
+
+def subscriptions():
+    try:
+        with open(os.path.join(REGISTRY, "subscriptions.json"), encoding="utf-8") as fh:
+            return set(json.load(fh))
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def subscribed(decision, keys):
+    return keys is None or f"{decision['session']}/*" in keys or f"{decision['session']}/{decision['board']}" in keys
+
+
+def notices(decisions, before, keys):
+    current = {(d["session"], d["pane"]): (d["level"], d.get("done_at"), d["question"][:80])
+               for d in decisions if not d.get("background") and subscribed(d, keys)}
+    fresh = [d for d in decisions if before is not None and current.get((d["session"], d["pane"])) not in (None, before.get((d["session"], d["pane"])))]
+    return current, fresh
+
+
+def notify(decision):
+    title, message = f"{LEVEL_NOTICE[decision['level']]} · {decision['title']}", " ".join((decision.get("recap") or decision["question"]).split())[:160]
+    notifier = shutil.which("terminal-notifier") or next((p for p in ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier") if os.path.exists(p)), None)
+    if notifier:
+        command = [notifier, "-title", "squad-board", "-subtitle", title, "-message", message, "-group", f"squad-board:{decision['session']}:{decision['pane']}"]
+        command += ["-open", board_url] if board_url else []
+    else:
+        quote = lambda text: json.dumps(text, ensure_ascii=False)
+        command = ["osascript", "-e", f"display notification {quote(message)} with title \"squad-board\" subtitle {quote(title)}"]
+    try:
+        subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError as error:
+        print("notify failed:", error, file=sys.stderr)
+
+
 def poll():
+    global notified
     while True:
         try:
             data = snapshot()
+            notified, fresh = notices(data["decisions"], notified, subscriptions())
+            for decision in fresh:
+                notify(decision)
         except Exception as error:
             print("snapshot failed:", error, file=sys.stderr)
             time.sleep(5)
@@ -803,8 +849,8 @@ def send_reply(session, pane, text):
     decision = awaiting(session, pane)
     if not decision:
         return 404, "这个会话现在没有在等你决定"
-    if decision.get("kind") != "question":
-        return 409, "这是选择框或权限确认，请定位到会话里操作"
+    if decision.get("kind") not in ("question", "report"):
+        return 409, "这是选择框或权限确认，请直接点选项"
     text = " ".join(str(text).split())
     if not text or len(text) > 2000:
         return 400, "回复不能为空，也不能超过 2000 字"
@@ -989,7 +1035,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply", "/api/choose"):
+        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply", "/api/choose", "/api/subscriptions"):
             return self.send(404, b"not found", "text/plain")
         if self.client_address[0] not in LOCAL_CLIENTS:
             return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
@@ -1000,6 +1046,13 @@ class Handler(BaseHTTPRequestHandler):
         except (ValueError, TypeError):
             return self.send(400, b"bad request", "text/plain")
         reply = lambda code, data: self.send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        if path == "/api/subscriptions":
+            keys = body.get("keys")
+            if not isinstance(keys, list) or len(keys) > 1000 or not all(isinstance(k, str) and len(k) < 300 for k in keys):
+                return reply(400, dict(ok=False, message="bad subscriptions"))
+            with open(os.path.join(REGISTRY, "subscriptions.json"), "w", encoding="utf-8") as fh:
+                json.dump(sorted(keys), fh, ensure_ascii=False)
+            return reply(200, dict(ok=True))
         if path == "/api/choose":
             code, message = send_choice(body.get("session", ""), body.get("pane", ""), body.get("number"), body.get("option", ""))
             return reply(code, dict(ok=code == 200, message=message))
@@ -1091,6 +1144,7 @@ def bind():
 
 if __name__ == "__main__":
     server = bind()
+    board_url = f"http://127.0.0.1:{server.server_address[1]}/#/"
     threading.Thread(target=refresh_activity, daemon=True).start()
     threading.Thread(target=poll, daemon=True).start()
     print(f"squad board: http://{HOST}:{server.server_address[1]}/  registry={REGISTRY}", flush=True)

@@ -272,8 +272,12 @@ def test_dim_suggestion_is_returned_and_typed_text_is_not():
     assert decisions.parse_screen(synthetic_screen(body), "idle")["suggestion"] == ""
 
 
-def test_report_without_question_is_not_a_decision():
-    assert decisions.parse_screen(synthetic_screen("\u23fa All checks passed.\nRegression is complete."), "idle") is None
+def test_report_without_question_is_a_stop():
+    report = decisions.parse_screen(synthetic_screen("\u23fa All checks passed.\nRegression is complete."), "idle")
+    assert report["kind"] == "report" and report["question"].endswith("Regression is complete.")
+    hinted = synthetic_screen("\u23fa Regression is complete.").replace("\u273b Brewed", "\u273b Brewed").replace("\x1b[38;2;136;136;136m\u2500", "     \u25d0 medium \u00b7 /effort\n\x1b[38;2;136;136;136m\u2500", 1)
+    assert decisions.parse_screen(hinted, "idle")["question"] == "Regression is complete."
+    assert decisions.parse_screen(synthetic_screen("\u23fa Ready.", done=""), "idle") is None
     assert decisions.parse_screen(synthetic_screen("\u23fa Merge the PR first?"), "working") is None
 
 
@@ -282,7 +286,7 @@ def test_recap_asking_for_a_decision_counts_without_question_mark():
     recap = "PR is ready. \u4e0b\u4e00\u6b65\u9700\u8981\u4f60\u786e\u8ba4\u662f\u5426\u5408\u5e76\u3002"
     found = decisions.parse_screen(synthetic_screen(body, recap=recap), "idle")
     assert found["question"] == recap and found["recap"] == recap
-    assert decisions.parse_screen(synthetic_screen(body, recap="PR is ready, nothing pending."), "idle") is None
+    assert decisions.parse_screen(synthetic_screen(body, recap="PR is ready, nothing pending."), "idle")["kind"] == "report"
 
 
 def test_dash_options_follow_the_question():
@@ -359,9 +363,25 @@ def test_past_decision_in_recap_is_not_a_question():
         "\u203b recap: \u4f60\u51b3\u5b9a\u5728\u672c\u5361\u4fee\u7684\u95ee\u9898\u6b63\u5728\u4fee\uff0c\u90e8\u7f72\u540e\u6211\u4f1a\u6d3e QA \u56de\u5f52\uff0c\u518d\u7ed9\u4f60\u6700\u7ec8\u7ed3\u8bba\u3002",
         "\u2500" * 40, "\u276f ", "\u2500" * 40,
     ])
-    assert decisions.parse_screen(report, "done") is None
+    assert decisions.parse_screen(report, "done")["kind"] == "report"
+    assert decisions.parse_screen(report.replace("\u2500" * 40 + "\n\u276f \n" + "\u2500" * 40, "\u2500" * 40 + "\n\u276f \n" + "\u2500" * 40 + "\n  bypass permissions on \u00b7 1 shell \u00b7 \u2190 2 agents"), "done")["shells"] == 1
     asking = report.replace("\u4f60\u51b3\u5b9a\u5728", "\u4e0b\u4e00\u6b65\u9700\u8981\u4f60\u51b3\u5b9a\u5728")
     assert decisions.parse_screen(asking, "done")["kind"] == "question"
+
+def test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed():
+    ask = dict(session="s", pane="p1", board="b", level="stopped", done_at="1:00 PM", question="Merge?")
+    busy = dict(ask, pane="p2", background=True)
+    other = dict(ask, pane="p3", board="x")
+    seen, fresh = serve.notices([ask], None, None)
+    assert fresh == []
+    seen, fresh = serve.notices([ask, busy], seen, None)
+    assert fresh == []
+    seen, fresh = serve.notices([dict(ask, level="decide")], seen, None)
+    assert [d["pane"] for d in fresh] == ["p1"]
+    seen, fresh = serve.notices([], seen, None)
+    seen, fresh = serve.notices([ask, other], seen, {"s/b"})
+    assert [d["pane"] for d in fresh] == ["p1"]
+    assert serve.notices([other], {}, {"s/*"})[1] == [other]
 
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
@@ -383,7 +403,7 @@ if __name__ == "__main__":
     test_latest_dispatch_wins_and_old_report_is_stale()
     test_input_state_tells_empty_suggestion_and_typed_apart()
     test_dim_suggestion_is_returned_and_typed_text_is_not()
-    test_report_without_question_is_not_a_decision()
+    test_report_without_question_is_a_stop()
     test_recap_asking_for_a_decision_counts_without_question_mark()
     test_dash_options_follow_the_question()
     test_numbered_questions_stay_in_the_question_text()
@@ -392,4 +412,5 @@ if __name__ == "__main__":
     test_decision_belongs_to_subscribable_board()
     test_permission_prompt_question_skips_separators_and_tips()
     test_past_decision_in_recap_is_not_a_question()
+    test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed()
     print("ok")

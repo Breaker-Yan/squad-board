@@ -5,7 +5,7 @@ A local, zero-dependency live board for multi-agent squads running in [herdr](ht
 One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, a "needs you" list of leads waiting on your decision, and reminders (blocked workers, pending confirmations). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
 
 - Python 3 standard library only, no install step
-- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a pane, **reply** to a lead that is waiting on you, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
+- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a pane, **reply** to or **answer the prompt** of a lead that is waiting on you, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
 - Serves files only from each board's `root`, with an extension allowlist
 - Binds `127.0.0.1` by default
 
@@ -106,7 +106,16 @@ Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-pro
 
 ## Waiting on you
 
-Leads (nameless Claude Code agents outside `W·` tabs) that stopped to ask you something are listed first under **需要你**, with their question, the options they listed, the `※ recap` line and the grey suggested reply from their input box. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`; it is re-read only when the agent's state changes or every 30 s. A free-text question can be answered in place: **采纳建议** sends the suggested reply, **回复…** sends your own text (typed into the lead's input box and submitted). The reply is refused when the input box already holds text you typed but did not send, and a selection or permission prompt (AskUserQuestion, tool approval) shows its options as buttons: clicking one re-reads the screen, checks the prompt and that option are unchanged, and presses its number key. **需要你** holds nothing else: reminders (blocked workers, pending confirmations) appear in a separate **提醒** panel on the board page and as a grey count on its overview row.
+Leads (nameless Claude Code agents outside `W·` tabs) whose turn has ended are listed under **需要你** in two groups:
+
+- **🔴 需要你决定** — the lead is stuck on a selection or permission prompt (AskUserQuestion, tool approval). Its options are buttons: clicking one re-reads the screen, checks the prompt and that option are unchanged, and presses its number key.
+- **🟡 停下等你** — the lead finished its turn and nothing else will wake it: no background shell is running and no worker of its board is working. The card shows the `※ recap` line and the last paragraph (tagged 在问你 when it reads like a question). **采纳建议** sends the grey suggested reply from its input box, **回复…** sends your own text; a reply is refused when the input box holds text you typed but did not send.
+
+A lead waiting on its own background work is not listed. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`, re-read when the agent's state changes or every 30 s. Ask leads to put decisions in AskUserQuestion rather than prose so they land in 🔴.
+
+Each time a subscribed lead enters 🔴 or 🟡 the service posts one macOS notification (`terminal-notifier` if installed, clicking opens the board; otherwise `osascript`). The page shares your subscriptions with the service (`~/.squad-board/subscriptions.json`) so only subscribed boards notify; until a page has shared them, every lead notifies. Reminders about workers (blocked workers, pending confirmations) appear in a separate **提醒** panel on the board page.
+
+Boards without declared `phases` show the conventional pipeline 方案 → AC → 开发 → 验收 → 收尾, derived from `docs/AC.md` rows, work-item progress, AC conclusions and `CLOSEOUT.md`.
 
 ## Archiving a board
 

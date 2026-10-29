@@ -5,6 +5,8 @@ RULE = re.compile(r"\s*─{3,}")
 TABLE_ROW = re.compile(r"\s*[┌├└│┬┴┼┐┤┘]")
 LIST_ITEM = re.compile(r"^(\s*)([-*•]|\d+[.、)])\s+(.*)")
 SELECT_OPTION = re.compile(r"^\s*(?:❯\s*)?(\d+)[.)]\s+(.+)")
+BACKGROUND_SHELLS = re.compile(r"·\s*(\d+)\s+shells?\b")
+EFFORT_HINT = re.compile(r"/effort\s*$")
 PROMPT_CHROME = re.compile(r"^\s*(?:╌{3,}|Tip:)")
 RECAP_LINE = re.compile(r"\s*※\s*recap:?\s*(.*)")
 TURN_END_LINE = re.compile(r"\bfor \d+\s*[smh]\b.*·\s*done")
@@ -230,7 +232,7 @@ def parse_screen(ansi, status):
     done_at = ""
     cleaned = []
     for number, line in enumerate(body_lines):
-        if number in recap_rows or RULE.match(line) or NEW_TASK_HINT.search(line):
+        if number in recap_rows or RULE.match(line) or NEW_TASK_HINT.search(line) or EFFORT_HINT.search(line):
             continue
         if TURN_END_LINE.search(line):
             found = DONE_AT.search(line)
@@ -238,6 +240,7 @@ def parse_screen(ansi, status):
             continue
         cleaned.append("" if TABLE_ROW.match(line) else re.sub(r"^(\s*)⏺ ", r"\1  ", line))
     _, suggestion = _read_input(ansi)
+    shells = BACKGROUND_SHELLS.search(" ".join(plain[box[2]:])) if box else None
     decision = None
     if status == "blocked":
         decision = _read_blocked(plain)
@@ -245,7 +248,12 @@ def parse_screen(ansi, status):
         kind, question, options = decision
     else:
         found = _read_decision(cleaned, recap)
-        if not found:
+        if found:
+            kind, (question, options) = "question", found
+        elif done_at or recap:
+            last = _blocks(cleaned)
+            kind, question, options = "report", _clip_tail(_join_wrapped([line.strip() for line in last[-1]])) if last else recap, []
+        else:
             return None
-        kind, (question, options) = "question", found
-    return dict(kind=kind, question=question, options=options, suggestion=suggestion, recap=recap, done_at=done_at)
+    return dict(kind=kind, question=question, options=options, suggestion=suggestion, recap=recap, done_at=done_at,
+                shells=int(shells.group(1)) if shells else 0)

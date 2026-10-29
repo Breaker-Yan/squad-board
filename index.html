@@ -74,6 +74,7 @@ table.mini td { padding: 3px 6px; }
 .dopts { margin: 0; padding-left: 20px; display: grid; gap: 2px; }
 .dopt { font: inherit; font-size: 13px; color: var(--ink); background: transparent; border: 0; padding: 2px 4px; border-radius: 4px; text-align: left; cursor: pointer; }
 .dopt:hover { background: var(--panel); color: var(--accent); }
+.dgroup { margin: 4px 0 8px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
 .dopt.choose { border: 1px solid var(--accent); margin: 2px 0; }
 .dacts { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip.accept { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
@@ -391,7 +392,7 @@ document.addEventListener("click", async e => {
     toast(`已在 session <b class="mono">${esc(session)}</b> 里切到 <b>${esc(who)}</b>。终端连的是别的 session 时，运行 <code class="mono">herdr session attach ${esc(session)}</code> 切过去。`);
   } catch { toast("定位失败：连不上看板服务"); }
 });
-const KIND_LABEL = { choice: "选择框", approval: "权限确认" };
+const KIND_LABEL = { choice: "选择框", approval: "权限确认", question: "在问你", report: "说完了" };
 const SELECT_CHROME = /^(Type something|Chat about this)/;
 function decisionCard(d) {
   const key = `${d.session}|${d.pane}`;
@@ -404,16 +405,18 @@ function decisionCard(d) {
       ? `<li><button type="button" class="dopt" data-option="${esc(o)}" title="填进回复框">${esc(o)}</button></li>`
       : SELECT_CHROME.test(o) ? "" : `<li><button type="button" class="dopt choose" data-choose="${i + 1}" data-option="${esc(o)}" title="直接在会话里选这一项">${esc(o)}</button></li>`).join("")}</ol>` : ""}
     <div class="dacts">
-      ${d.suggestion && d.kind === "question" ? `<button type="button" class="chip accept" data-send="${esc(d.suggestion)}">采纳建议：「${esc(d.suggestion)}」</button>` : ""}
-      ${d.kind === "question" ? `<button type="button" class="chip" data-reply-open>回复…</button>` : ""}
+      ${d.suggestion && d.level === "stopped" ? `<button type="button" class="chip accept" data-send="${esc(d.suggestion)}">采纳建议：「${esc(d.suggestion)}」</button>` : ""}
+      ${d.level === "stopped" ? `<button type="button" class="chip" data-reply-open>回复…</button>` : ""}
       ${focusBtn(d.session, d.pane, d.title)}
     </div>
     <div class="dreply" ${openReplies.has(key) ? "" : "hidden"}><textarea class="reply-text" rows="2" placeholder="写给这个会话的回复，发送后它会继续" data-key="${esc(key)}">${esc(replyDrafts.get(key) || "")}</textarea>
       <button type="button" class="chip accept" data-reply-send>发送</button></div></li>`;
 }
 function decisionsBlock(decisions) {
-  return decisions.length ? `<ul class="decisions">${decisions.map(decisionCard).join("")}</ul>` : `<div class="empty">现在没有要你决定的事。</div>`;
+  const group = (level, title) => { const list = decisions.filter(d => d.level === level); return list.length ? `<h3 class="dgroup">${title} · ${list.length}</h3><ul class="decisions">${list.map(decisionCard).join("")}</ul>` : ""; };
+  return decisions.length ? group("decide", "🔴 需要你决定") + group("stopped", "🟡 停下等你") : `<div class="empty">现在没有在等你的会话。</div>`;
 }
+const waitingTitle = decisions => decisions.length ? ` · ${decisions.length} 个会话在等你` : "";
 const openReplies = new Set(), replyDrafts = new Map();
 document.addEventListener("input", e => { if (e.target.classList?.contains("reply-text")) replyDrafts.set(e.target.dataset.key, e.target.value); });
 document.addEventListener("focusout", e => { if (e.target.classList?.contains("reply-text") && renderQueued) setTimeout(() => { renderQueued = false; render(false); }, 0); });
@@ -459,13 +462,15 @@ function needsList(items, board, withBoardTag) {
 const boardRank = b => b.offline ? 4 : (b.needs || []).length ? 0 : (b.workers || []).some(w => w.status === "working") ? 1 : (b.workers || []).length ? 2 : 3;
 
 function loadSet(key) { try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch { return new Set(); } }
-function saveSet(key, set) { try { localStorage.setItem(key, JSON.stringify([...set])); } catch {} }
+function saveSet(key, set) { try { localStorage.setItem(key, JSON.stringify([...set])); } catch {} if (key === SUB_KEY) shareSubscriptions(); }
+function shareSubscriptions() { fetch("/api/subscriptions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keys: [...subs] }) }).catch(() => {}); }
 const SUB_KEY = "squad-board.subscribed", SEEN_KEY = "squad-board.seen";
 const subs = loadSet(SUB_KEY), seen = loadSet(SEEN_KEY), firstVisit = !seen.size;
+if (subs.size) shareSubscriptions();
 let catalogOpen = null;
 const wildcard = session => `${session}/*`;
 const isSubscribed = b => subs.has(boardKey(b)) || subs.has(wildcard(b.session));
-const isDecisionSubscribed = d => subs.has(wildcard(d.session)) || subs.has(`${d.session}/${d.board}`);
+const isDecisionSubscribed = d => !d.background && (subs.has(wildcard(d.session)) || subs.has(`${d.session}/${d.board}`));
 
 function unsubscribe(b) {
   if (subs.has(boardKey(b))) subs.delete(boardKey(b));
@@ -508,7 +513,7 @@ function renderOverview() {
     return `<div class="bwrap"><a class="brow ${waitingOn(b) ? "attn" : ""}" href="${boardHref(b)}">
       <div><div class="name">${esc(b.name)}${autoTag}</div><div class="sub">${esc(b.subtitle)}</div>
         <div class="tabs">${lines.map(t => `<span class="chip mono">${esc(t)}</span>`).join("")}</div></div>
-      <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${waitingOn(b) ? ` · <span style="color:var(--fail)">${waitingOn(b)} 个在等你决定</span>` : ""}${reminders(b)}</div></div>
+      <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${waitingOn(b) ? ` · <span style="color:var(--fail)">${waitingOn(b)} 个在等你</span>` : ""}${reminders(b)}</div></div>
       <div>${share === null ? `<div class="sub">${Object.keys(b.cards || {}).length ? `${Object.keys(b.cards).length} 张卡 · 未配置 AC 数据源` : "未配置 AC 数据源"}</div>`
         : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${(r => `${r.pct} ${r.label}${r.note ? ` · ${r.note.split(" · ")[0]}` : ""}`)(ringStats(b))} · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
         ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}${(b.demos || []).length ? ` · ▶ ${b.demos.length} 演示` : ""}${b.closeout?.state === "done" ? " · ✅ 已收尾" : ""}</div>`}</div>
@@ -524,7 +529,7 @@ function renderOverview() {
           <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${reminders(b)}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
     </details>` : "";
   put(document.getElementById("app")).innerHTML = mine.length ? `
-    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${myDecisions.length ? ` · ${myDecisions.length} 个会话在等你决定` : ""}</h2>${decisionsBlock(myDecisions)}</section><div class="panel rail-box" id="rail-slot"></div></div>
+    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${waitingTitle(myDecisions)}</h2>${decisionsBlock(myDecisions)}</section><div class="panel rail-box" id="rail-slot"></div></div>
     ${mySessions.map(({ s, bs }) => `<section class="session" aria-label="session ${esc(s.name)}">
       <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
         ${subs.has(wildcard(s.name)) ? subBtn("data-unsub-session", s.name, "取消订阅 session") : ""}</div>
@@ -603,7 +608,7 @@ let shown = [];
 function renderBoardShell(b) {
   ["app", "crumb"].forEach(id => renderedHTML.delete(document.getElementById(id)));
   document.getElementById("title").textContent = b.name;
-  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有要你决定的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto && !String(b.id).startsWith("story-") ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
+  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有在等你的会话</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto && !String(b.id).startsWith("story-") ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
   document.getElementById("app").innerHTML = `
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
@@ -657,9 +662,18 @@ const progressState = (done, total) => total && done === total ? "done" : done ?
 const phaseView = b => p => {
   if (p.auto === "impl") { const { done, total } = implTotals(b); return { label: `${p.label} ${done}/${total} ${workItemsOnly(b) ? "项" : "Task"}`, state: progressState(done, total) }; }
   if (p.auto === "closeout") { const c = b.closeout; return { label: p.label, state: c?.state === "done" ? "done" : c?.exists ? "now" : "" }; }
+  if (p.auto === "ac") { const n = (b.rows || []).length; return { label: n ? `${p.label} ${n} 条` : p.label, state: n ? "done" : "" }; }
+  if (p.auto === "verify") { const rows = counted(b), done = new Set((b.statuses || []).filter(s => s.done).map(s => s.id)), n = rows.filter(r => done.has(r.status)).length; return { label: rows.length ? `${p.label} ${n}/${rows.length}` : p.label, state: progressState(n, rows.length) }; }
   if (p.auto === "plans") { const ps = b.plans || [], done = ps.filter(x => x.state === "done").length; return { label: `${p.label} ${done}/${ps.length}`, state: progressState(done, ps.length) }; }
   return p;
 };
+const CONVENTIONAL_PHASES = [{ label: "方案" }, { label: "AC", auto: "ac" }, { label: "开发", auto: "impl" }, { label: "验收", auto: "verify" }, { label: "收尾", auto: "closeout" }];
+function phasesOf(b) {
+  if ((b.phases || []).length) return b.phases.map(phaseView(b));
+  if (!(b.rows || []).length && !implTotals(b).total && !b.closeout?.exists) return [];
+  const views = CONVENTIONAL_PHASES.map(phaseView(b));
+  return views.map((p, i) => !p.state && views.slice(i + 1).some(q => q.state) ? { ...p, state: "done" } : p);
+}
 const openPlans = new Set();
 const EVENT_TARGET = { worker: "worker", report: "worker", ac: "AC", issue: "缺陷", plan: "子计划", closeout: "收尾" };
 const eventRef = e => e.worker || (e.card && e.ac ? `${e.card}|${e.ac}` : "") || e.issue || e.plan || (e.closeout ? "closeout" : "");
@@ -699,7 +713,7 @@ function planItem(b, p) {
 
 function renderHero(b) {
   const rows = counted(b), share = doneShare(b);
-  const phases = (b.phases || []).map(phaseView(b)).map((p, i) => `${i ? '<span class="arrow">→</span>' : ""}<span class="step ${esc(p.state)}">${esc(p.label)}</span>`).join("");
+  const phases = phasesOf(b).map((p, i) => `${i ? '<span class="arrow">→</span>' : ""}<span class="step ${esc(p.state)}">${esc(p.label)}</span>`).join("");
   const bare = share === null && !phases;
   document.getElementById("hero").hidden = bare;
   document.getElementById("top-row").classList.toggle("bare", bare);
@@ -996,7 +1010,7 @@ function render(routeChanged) {
   }
   if (!b) { renderOverview(); mountRail(); renderRail(); view = key; firstRender = false; return; }
   if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = true; renderBoardShell(b); view = key; }
-  const needs = b.needs || [], waiting = (STATE.decisions || []).filter(d => d.session === b.session && d.board === b.id);
+  const needs = b.needs || [], waiting = (STATE.decisions || []).filter(d => !d.background && d.session === b.session && d.board === b.id);
   mountRail(); renderHero(b);
   document.getElementById("needs-sec").hidden = !waiting.length;
   put(document.getElementById("needs")).innerHTML = decisionsBlock(waiting);
