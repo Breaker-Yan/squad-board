@@ -50,7 +50,9 @@ A worker whose working directory is inside `<workspace>/<story>/` belongs to tha
 
 | File | Shows |
 |---|---|
-| `docs/AC.md` (or `AC.md`) | AC table. Columns are matched by header name; only `AC` and a status column (`最终状态` / `状态` / `结论` / `status` / `result`) are required, the card defaults to the digits in the board name |
+| `docs/AC.md` (or `AC.md`) | AC table. Columns are matched by header name; only `AC` and a status column (`最终状态` / `状态` / `结论` / `status` / `result`) are required. `内容` / `描述` is shown as the AC text; screenshot paths in `证据` become evidence. Without a card column the card is the digits in the board name. Columns that are empty or identical on every row are hidden |
+| `docs/plans/*.md` with `### Task` headings, progress in `docs/exec/STATUS-<id>.md` | Plan and task progress |
+| otherwise `docs/brief-X.md` + `docs/report-X.md` pairs | One work item per pair, status from the report's `STATUS:` line |
 | `demos/*.mp4` / `.webm` / `.mov` | MVP demo panel |
 | `docs/CLOSEOUT.md` (or `CLOSEOUT.md`) | Closeout panel |
 
@@ -104,7 +106,7 @@ Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-pro
 
 ## Archiving a board
 
-When a squad is done, press **归档** on its board (or `curl -X POST 127.0.0.1:8790/api/archive -d '{"session":"<herdr session>","board":"<board id>"}'`). The board's current state — AC rows, issues, plans and tasks, last worker status, the full event log — is saved under `~/.squad-board/.archive/<session>/<board>-<time>/`, and its declaration, dispatch log and events move there too, so it leaves the overview. Archived boards are listed at the bottom of the overview and open as a read-only snapshot; **恢复** moves everything back. Evidence links still point at the original files under the board's `root`. Only declared boards can be archived; archive and restore, like focus, accept loopback requests only.
+When a squad is done, press **归档** on its board (or `curl -X POST 127.0.0.1:8790/api/archive -d '{"session":"<herdr session>","board":"<board id>"}'`). The board's current state — AC rows, issues, plans and tasks, last worker status, the full event log — is saved under `~/.squad-board/.archive/<session>/<board>-<time>/`, and its declaration, dispatch log and events move there too, so it leaves the overview. Archived boards are listed at the bottom of the overview and open as a read-only snapshot; **恢复** moves everything back. Evidence links still point at the original files under the board's `root`. Auto boards of a story space can be archived too: they stay hidden until files in the story change again, and restore just drops the snapshot. Archive and restore, like focus, accept loopback requests only.
 
 ## Files
 

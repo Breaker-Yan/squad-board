@@ -350,7 +350,7 @@ function barHtml(board, rows) {
 const isUnclosed = i => !["verified", "rejected"].includes(i.status);
 const openIssues = b => (b.issues || []).filter(isUnclosed).length;
 const issueUrgency = i => ({ open: 0, reopened: 0, fixing: 1, deployed: 2 })[i.status] ?? 1;
-let issuesOpenOnly = false;
+let issuesOpenOnly = true;
 
 const focusBtn = (session, pane, who) => `<button type="button" class="chip focus-btn" data-focus-session="${esc(session)}" data-focus-pane="${esc(pane)}" data-focus-who="${esc(who)}" title="在 herdr 里切到这个 pane">⤢ 定位</button>`;
 const renderedHTML = new WeakMap();
@@ -482,8 +482,12 @@ function jumpToTable() {
   document.getElementById("h-table")?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-function openIssue(b, id) {
-  const i = (b.issues || []).find(x => x.id === id); if (!i) return;
+async function openIssue(b, id) {
+  let i = (b.issues || []).find(x => x.id === id); if (!i) return;
+  if (!b.archived && !("repro" in i)) {
+    const res = await fetch(`/api/issue?board=${encodeURIComponent(`${b.session}/${b.id}`)}&id=${encodeURIComponent(id)}`);
+    if (res.ok) i = await res.json();
+  }
   document.getElementById("dlg-title").textContent = `${i.id} · ${i.title || ""}`;
   const block = (k, v) => v ? `<section><div class="dlg-k">${k}</div><div class="pre">${esc(v)}</div></section>` : "";
   const acs = (i.acs || []).map(a => { const m = String(a).match(/^(\d{5})\s+([A-Z]+-?\d+[a-z]?)/);
@@ -523,7 +527,7 @@ let shown = [];
 function renderBoardShell(b) {
   ["app", "crumb"].forEach(id => renderedHTML.delete(document.getElementById(id)));
   document.getElementById("title").textContent = b.name;
-  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
+  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto && !String(b.id).startsWith("story-") ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
   document.getElementById("app").innerHTML = `
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
@@ -537,7 +541,7 @@ function renderBoardShell(b) {
       <div class="filters">${cards.length > 1 ? `<select id="f-card" aria-label="卡"><option value="">全部卡</option>${cards.map(c => `<option value="${esc(c)}">${esc(c)} ${esc(b.cards[c])}</option>`).join("")}</select>` : ""}
         <input id="f-q" type="search" placeholder="搜索 AC、类别、结论…" aria-label="搜索"><span id="f-group"></span><span class="count mono" id="f-count"></span></div>
       <div class="filters" id="f-buckets" role="group" aria-label="按状态筛选"></div>
-      <div class="tablebox"><table><thead><tr><th>卡</th><th>AC</th><th>类别</th><th>组</th><th>状态</th><th>QA Manager 核对</th><th>Issue</th><th>证据</th></tr></thead><tbody id="rows"></tbody></table></div>
+      <div class="tablebox"><table><thead id="thead"></thead><tbody id="rows"></tbody></table></div>
     </section>` : ""}`;
   const fCard = document.getElementById("f-card"), fq = document.getElementById("f-q");
   if (fCard) { fCard.value = filters.card; fCard.addEventListener("change", () => { filters.card = fCard.value; renderTable(current()); }); }
@@ -549,7 +553,7 @@ function renderBoardShell(b) {
   document.getElementById("hero").addEventListener("click", e => {
     const tile = e.target.closest("[data-stat], [data-stat-issues]"); if (!tile) return;
     if (tile.dataset.statIssues !== undefined) {
-      issuesOpenOnly = !issuesOpenOnly;
+      issuesOpenOnly = true;
       const b = current(); renderHero(b); renderSide(b);
       return document.getElementById("issues-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
@@ -567,13 +571,14 @@ function renderBoardShell(b) {
   tbody?.addEventListener("keydown", e => { const tr = e.target.closest("tr"); if (tr && e.key === "Enter") openRow(current(), Number(tr.dataset.i)); });
 }
 
+const workItemsOnly = b => (b.plans || []).length > 0 && b.plans.every(p => p.kind === "workitem");
 function implTotals(b) {
   const tracked = (b.plans || []).filter(p => p.tracked);
   return { done: tracked.reduce((n, p) => n + p.done, 0), total: tracked.reduce((n, p) => n + p.tasks, 0) };
 }
 const progressState = (done, total) => total && done === total ? "done" : done ? "now" : "";
 const phaseView = b => p => {
-  if (p.auto === "impl") { const { done, total } = implTotals(b); return { label: `${p.label} ${done}/${total} Task`, state: progressState(done, total) }; }
+  if (p.auto === "impl") { const { done, total } = implTotals(b); return { label: `${p.label} ${done}/${total} ${workItemsOnly(b) ? "项" : "Task"}`, state: progressState(done, total) }; }
   if (p.auto === "closeout") { const c = b.closeout; return { label: p.label, state: c?.state === "done" ? "done" : c?.exists ? "now" : "" }; }
   if (p.auto === "plans") { const ps = b.plans || [], done = ps.filter(x => x.state === "done").length; return { label: `${p.label} ${done}/${ps.length}`, state: progressState(done, ps.length) }; }
   return p;
@@ -609,8 +614,8 @@ function planItem(b, p) {
       <span class="ttl">${esc(t.title)}${t.note ? `<span class="tnote" title="${esc(t.note)}">${esc(t.note)}</span>` : ""}</span><span class="mono sha">${esc(t.sha.slice(0, 10))}</span></li>`).join("")}`).join("");
   return `<li class="plan"><details data-plan="${esc(key)}" ${openPlans.has(key) ? "open" : ""}><summary>
       <div class="what"><b class="mono">${esc(p.id)}</b> <span class="s">${esc(p.repo)} · ${esc(p.scope)}</span>
-        ${p.tracked ? `<div class="pbar"><span style="width:${share * 100}%"></span></div><div class="s mono">实现 ${p.done}/${p.tasks} Task</div>` : p.tasks ? `<div class="s mono">${p.tasks} Task · 未配置进度文件</div>` : ""}</div>
-      <span class="pills">${demoBadge(b, p.id)}${planPill}${impl}</span></summary>
+        ${p.kind === "workitem" ? "" : p.tracked ? `<div class="pbar"><span style="width:${share * 100}%"></span></div><div class="s mono">实现 ${p.done}/${p.tasks} Task</div>` : p.tasks ? `<div class="s mono">${p.tasks} Task · 未配置进度文件</div>` : ""}</div>
+      <span class="pills">${demoBadge(b, p.id)}${p.kind === "workitem" ? "" : planPill}${impl}</span></summary>
       <div class="plan-files s">${(p.files || []).map(f => `${f.label && (p.files || []).length > 1 ? `<b class="mono">${esc(f.label)}</b> ` : ""}计划 ${f.plan.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "—"} · 进度 ${f.progress.map(x => fileLink(b, x, x.split("/").pop())).join("、") || "未配置"}`).join("<br>")}</div>
       ${p.task_list.length ? `<ul class="tasks">${rows}</ul>` : `<div class="s">计划里没有 ### Task 段落。</div>`}</details></li>`;
 }
@@ -761,7 +766,7 @@ function renderSide(b) {
   if ((b.issues || []).length) parts.push(`<section class="panel" aria-label="缺陷与修复" id="issues-panel"><div class="panel-head"><h2>缺陷与修复</h2>
     <div class="filters" role="group" aria-label="缺陷筛选"><button type="button" class="chip" data-issues-filter="all" aria-pressed="${!issuesOpenOnly}">全部 <span class="mono">${b.issues.length}</span></button><button type="button" class="chip" data-issues-filter="open" aria-pressed="${issuesOpenOnly}">未关闭 <span class="mono">${unclosed.length}</span></button></div></div>
     <ul class="items">${list(shownIssues.map(i => `<li class="issue-row ${isUnclosed(i) ? "" : "closed"}" data-issue="${esc(i.id)}" tabindex="0" role="button" title="查看复现、期望、实际与证据"><div class="what"><b class="mono">${esc(i.id)}</b> ${esc(i.title)}<div class="s">${esc((i.acs || []).join("、"))} · ${esc(i.cause)} · 第 ${esc(i.round)} 轮${i.pr ? ` · PR ${esc(i.pr)}` : ""}${i.ci ? ` · CI ${esc(i.ci)}` : ""}</div></div><span class="pill" style="color:${col(b, i.status)}">${esc(i.status)}</span></li>`), "没有未关闭的缺陷")}</ul></section>`);
-  if ((b.plans || []).length) { const { done, total } = implTotals(b); parts.push(`<section class="panel plans-panel" aria-label="子计划与开发进度" id="plans-panel"><h2>子计划 · 开发进度${total ? ` <span class="mono" style="color:var(--accent)">${done}/${total} Task</span>` : ""}</h2><ul class="items">${b.plans.map(p => planItem(b, p)).join("")}</ul></section>`); }
+  if ((b.plans || []).length) { const { done, total } = implTotals(b); parts.push(`<section class="panel plans-panel" aria-label="子计划与开发进度" id="plans-panel"><h2>${workItemsOnly(b) ? "工作项" : "子计划"} · 开发进度${total ? ` <span class="mono" style="color:var(--accent)">${done}/${total} ${workItemsOnly(b) ? "项" : "Task"}</span>` : ""}</h2><ul class="items">${b.plans.map(p => planItem(b, p)).join("")}</ul></section>`); }
   const side = document.getElementById("side");
   if (!side.dataset.wired) { side.dataset.wired = "1";
     side.addEventListener("click", e => { const f = e.target.closest("[data-issues-filter]"); if (!f) return; issuesOpenOnly = f.dataset.issuesFilter === "open"; const b = current(); renderHero(b); renderSide(b); }); side.addEventListener("toggle", e => { const k = e.target.dataset?.plan; if (k) e.target.open ? openPlans.add(k) : openPlans.delete(k); }, true); }
@@ -824,6 +829,20 @@ function renderCards(b) {
   }).join("");
 }
 
+const TABLE_COLUMNS = [["card", "卡", "mono"], ["ac", "AC", "mono"], ["desc", "内容", ""], ["cat", "类别", ""], ["group", "组", "mono"],
+  ["status", "状态", ""], ["qam", "核对", "note"], ["issue", "Issue", "mono"], ["shots", "证据", "cam mono"]];
+function tableColumns(rows) {
+  const values = key => new Set(rows.map(r => String(r[key] ?? "").trim()).filter(v => v && v !== "—"));
+  return TABLE_COLUMNS.filter(([key]) => key === "ac" || key === "status" ? true
+    : key === "shots" ? rows.some(r => (r.shots || []).length)
+    : key === "card" || key === "group" ? values(key).size > 1 : values(key).size > 0);
+}
+function cellHTML(b, r, key) {
+  if (key === "status") return `<span class="pill" style="color:${col(b, r.status)}">${esc(r.final)}</span>`;
+  if (key === "shots") return r.shots && r.shots.length ? "▣ " + r.shots.length : "";
+  return esc(r[key] === "—" ? "" : r[key]);
+}
+
 function renderTable(b) {
   const tbody = document.getElementById("rows"); if (!tbody || !b) return;
   const present = (b.statuses || []).filter(s => (b.rows || []).some(r => r.status === s.id));
@@ -831,11 +850,11 @@ function renderTable(b) {
   const q = filters.q.trim().toLowerCase();
   put(document.getElementById("f-group")).innerHTML = filters.group ? `<button type="button" class="chip" data-clear-group aria-pressed="true">组 ${esc(filters.group)} ✕</button>` : "";
   shown = b.rows.filter(r => (!filters.card || r.card === filters.card) && (!filters.group || r.group === filters.group) && (!filters.active.size || filters.active.has(r.status)) &&
-    (!q || [r.ac, r.cat, r.how, r.final, r.qam, r.issue].join(" ").toLowerCase().includes(q)));
+    (!q || [r.ac, r.desc, r.cat, r.how, r.final, r.qam, r.issue].join(" ").toLowerCase().includes(q)));
   document.getElementById("f-count").textContent = `${shown.length} 条`;
-  put(tbody).innerHTML = shown.map((r, i) => `<tr tabindex="0" data-i="${i}"><td class="mono">${esc(r.card)}</td><td class="mono">${esc(r.ac)}</td><td>${esc(r.cat)}</td><td class="mono">${esc(r.group)}</td>
-    <td><span class="pill" style="color:${col(b, r.status)}">${esc(r.final)}</span></td><td class="note">${esc(r.qam === "—" ? "" : r.qam)}</td><td class="mono">${esc(r.issue)}</td>
-    <td class="cam mono">${r.shots && r.shots.length ? "▣ " + r.shots.length : ""}</td></tr>`).join("");
+  const cols = tableColumns(b.rows);
+  put(document.getElementById("thead")).innerHTML = `<tr>${cols.map(([, label]) => `<th>${label}</th>`).join("")}</tr>`;
+  put(tbody).innerHTML = shown.map((r, i) => `<tr tabindex="0" data-i="${i}">${cols.map(([key, , cls]) => `<td class="${cls}">${cellHTML(b, r, key)}</td>`).join("")}</tr>`).join("");
 }
 
 const dlg = document.getElementById("dlg");
@@ -893,8 +912,13 @@ function render(routeChanged) {
   if (!STATE?.sessions) return;
   if (pointerDown && !routeChanged) { renderQueued = true; return; }
   const b = current(), key = b ? boardKey(b) : "overview";
+  if (b && b.slim) {
+    if (view !== "loading") { put(document.getElementById("app")).innerHTML = `<div class="panel muted">加载中…</div>`; view = "loading"; }
+    loadState();
+    return;
+  }
   if (!b) { renderOverview(); mountRail(); renderRail(); view = key; firstRender = false; return; }
-  if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = false; renderBoardShell(b); view = key; }
+  if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = true; renderBoardShell(b); view = key; }
   const needs = b.needs || [];
   mountRail(); renderHero(b);
   document.getElementById("needs-sec").hidden = !needs.length;
@@ -911,15 +935,32 @@ function render(routeChanged) {
   if (pendingEvent && pendingEvent.board === key) { const { kind, ref } = pendingEvent; pendingEvent = null; runEvent(b, kind, ref); }
   firstRender = false;
 }
-addEventListener("hashchange", () => { firstRender = true; scrollToFocus = true; render(true); });
+addEventListener("hashchange", () => { firstRender = true; scrollToFocus = true; connect(); render(true); });
 
 const live = document.getElementById("live"), liveText = document.getElementById("live-text");
+let stream = null, streamFocus = null, stateLoading = false;
+const focusKey = () => { const r = route(); return r && !r.archive ? `${r.session}/${r.id}` : ""; };
 function connect() {
-  const es = new EventSource("/api/stream");
-  es.onmessage = e => { live.classList.add("on"); STATE = JSON.parse(e.data); render(false); liveText.textContent = "实时 · " + (STATE.updated || "").slice(11); };
-  es.onerror = () => { live.classList.remove("on"); liveText.textContent = "连接断开，重连中…"; };
+  const focus = focusKey();
+  if (stream && streamFocus === focus) return;
+  stream?.close();
+  streamFocus = focus;
+  stream = new EventSource(`/api/stream?board=${encodeURIComponent(focus)}`);
+  stream.onmessage = e => {
+    const data = JSON.parse(e.data);
+    if (streamFocus !== focusKey()) return;
+    live.classList.add("on"); STATE = data; render(false); liveText.textContent = "实时 · " + (STATE.updated || "").slice(11);
+  };
+  stream.onerror = () => { live.classList.remove("on"); liveText.textContent = "连接断开，重连中…"; };
 }
-fetch("/api/state").then(r => r.json()).then(d => { if (d.sessions) { STATE = d; scrollToFocus = true; render(true); } }).catch(() => {});
+function loadState() {
+  if (stateLoading) return;
+  stateLoading = true;
+  fetch(`/api/state?board=${encodeURIComponent(focusKey())}`).then(r => r.json())
+    .then(d => { if (d.sessions) { STATE = d; scrollToFocus = true; render(true); } })
+    .catch(() => {}).finally(() => { stateLoading = false; });
+}
+loadState();
 connect();
 </script>
 </body>

@@ -116,8 +116,9 @@ def cell_shots(root, base, cells):
 
 
 AC_FILES = ["docs/AC.md", "AC.md"]
-COLUMN_NAMES = [("card", ["卡", "卡号", "card"]), ("ac", ["ac"]), ("qam", ["qam 核对", "核对", "qam", "证据", "evidence"]),
-                ("qa", ["qa 结论", "qa"]), ("issue", ["issue", "缺陷", "bug"]), ("cat", ["类别", "分类", "功能", "category"]),
+COLUMN_NAMES = [("card", ["卡", "卡号", "card"]), ("ac", ["ac"]), ("evidence", ["证据", "截图", "evidence"]), ("qam", ["qam 核对", "核对", "qam"]),
+                ("qa", ["qa 结论", "qa"]), ("issue", ["issue", "缺陷", "bug"]), ("desc", ["内容", "描述", "说明", "标题", "description", "title"]),
+                ("cat", ["类别", "分类", "功能", "category"]),
                 ("how", ["执行方式", "方式", "how", "story"]), ("final", ["最终状态", "状态", "结论", "结果", "status", "result"])]
 DEFAULT_STATUSES = [
     dict(id="PASS", label="通过", color="pass", done=True, **{"pass": True}, prefix=["PASS", "通过", "✅"]),
@@ -159,7 +160,7 @@ def ac_rows(board):
     base, sections = os.path.dirname(path), spec.get("sections")
     positional = spec.get("columns", AC_COLUMNS)
     key = re.compile(spec.get("key", r"\d{4,}"))
-    default_card = (re.search(r"\d{4,}", f"{board.get('name', '')} {board.get('id', '')}") or [""])[0]
+    default_card = (re.search(r"\d{3,}", f"{board.get('name', '')} {board.get('id', '')}") or [board.get("id", "")])[0]
     statuses = board.get("statuses") or DEFAULT_STATUSES
     report_shots = report_evidence(board["root"], base, board.get("groups", []))
     rows, section, group, columns = [], (None if sections else True), "—", None
@@ -179,10 +180,12 @@ def ac_rows(board):
             continue
         row = dict(zip(columns or positional, cells))
         row.pop("", None)
+        has_card = "card" in (columns or positional)
         row.setdefault("card", default_card)
-        if not row.get("ac") or not key.fullmatch(row["card"]) or (not columns and len(cells) < len(positional)):
+        if not row.get("ac") or (has_card and not key.fullmatch(row["card"])) or (not columns and len(cells) < len(positional)):
             continue
-        for field in AC_COLUMNS:
+        row.pop("evidence", None)
+        for field in AC_COLUMNS + ["desc"]:
             row.setdefault(field, "")
         row["group"] = group
         final = row["final"]
@@ -339,7 +342,7 @@ def conventional_plans(root):
         report_rel = f"docs/report-{key}.md"
         found = report_status(root, report_rel) if key in reported else None
         done = bool(found and found["state"] == "done")
-        items.append(dict(id=key, repo="", scope=title, covers=[], state="done", tasks=1, done=int(done),
+        items.append(dict(id=key, kind="workitem", repo="", scope=title, covers=[], state="done", tasks=1, done=int(done),
                           task_list=[dict(id=key, title=title, part="", done=done, sha="", note=found["detail"] if found else "还没有报告")],
                           impl=dict(state=found["state"], detail=found["detail"], mtime=found["mtime"]) if found else None, tracked=True,
                           files=[dict(label="", plan=[os.path.relpath(path, root)], progress=[found["file"]] if found else [])]))
@@ -563,7 +566,7 @@ def recent_stories(workspaces, shown):
     for workspace in workspaces:
         base = os.path.realpath(os.path.expanduser(workspace))
         for story in sorted(glob.glob(os.path.join(base, "*"))):
-            if os.path.isdir(story) and story not in shown and time.time() - story_activity(story) < RECENT_SECONDS:
+            if os.path.isdir(story) and story not in shown and time.time() - story_activity(story) < RECENT_SECONDS and not archived_story(story):
                 found.append(story)
     return found
 
@@ -592,6 +595,9 @@ def snapshot():
             story = story_of(agent_dir(lead), workspaces)
             if story and story not in board_stories:
                 by_story.setdefault(story, [])
+        for story in [k for k in by_story if archived_story(k)]:
+            shown.add(story)
+            del by_story[story]
         shown |= board_stories | set(by_story)
         views = [board_snapshot(session, b, owned[b["id"]], tabs, exact=True) for b in boards]
         views += [dict(board_snapshot(session, story_board(story, members, tabs), members, tabs, exact=True), auto=True)
@@ -671,6 +677,17 @@ def board_events(session, board_id):
     return events[key]
 
 
+EVENT_LOG_KEEP = 2000
+
+
+def trim_log(path, keep=EVENT_LOG_KEEP):
+    if os.path.getsize(path) < 512 * 1024:
+        return
+    lines = open(path, encoding="utf-8").readlines()
+    if len(lines) > keep:
+        open(path, "w", encoding="utf-8").writelines(lines[-keep:])
+
+
 def record(old, new):
     previous = {(b["session"], b["id"]): b for s in old.get("sessions", []) for b in s["boards"]}
     stamp = time.strftime("%H:%M:%S")
@@ -685,6 +702,7 @@ def record(old, new):
                         e["at"], e["ts"] = stamp, int(time.time())
                         log.append(e)
                         fh.write(json.dumps(e, ensure_ascii=False) + "\n")
+                trim_log(events_path(session["name"], board["id"]))
                 del log[:-200]
             board["events"] = list(reversed(log[-60:]))
 
@@ -725,6 +743,33 @@ def focusable(session, pane):
                for b in s["boards"] for w in b.get("workers", []))
 
 
+def slim(board):
+    out = dict(board, slim=True)
+    out["rows"] = [dict(card=r["card"], status=r["status"]) for r in board.get("rows", [])]
+    out["issues"] = [dict(id=i["id"], status=i["status"], round=i.get("round")) for i in board.get("issues", [])]
+    out["plans"] = [{k: p[k] for k in ("id", "kind", "tasks", "done", "tracked", "state", "covers") if k in p} for p in board.get("plans", [])]
+    return out
+
+
+ISSUE_BODY = ("repro", "expected", "actual", "notes", "evidence")
+
+
+def focused(board):
+    return dict(board, issues=[{k: v for k, v in i.items() if k not in ISSUE_BODY} for i in board.get("issues", [])])
+
+
+def view_for(data, focus):
+    if not data:
+        return data
+    return dict(data, sessions=[dict(s, boards=[focused(b) if f"{b.get('session')}/{b['id']}" == focus else slim(b) for b in s["boards"]])
+                                for s in data["sessions"]])
+
+
+def find_issue(focus, issue_id):
+    board = next((b for s in state["data"].get("sessions", []) for b in s["boards"] if f"{b.get('session')}/{b['id']}" == focus), None)
+    return next((i for i in (board or {}).get("issues", []) if i.get("id") == issue_id), None)
+
+
 def board_root(session, board_id):
     for board in load_boards().get(session, []):
         if board["id"] == board_id:
@@ -757,21 +802,38 @@ def archive_summary(view, archive, root):
                 demos=len(view.get("demos") or []), closed_out=(view.get("closeout") or {}).get("state") == "done")
 
 
+def story_root(board_id):
+    if not board_id.startswith("story-"):
+        return None
+    name = board_id[len("story-"):]
+    for workspace in load_config().get("workspaces", []):
+        candidate = os.path.join(os.path.realpath(os.path.expanduser(workspace)), name)
+        if os.path.isdir(candidate):
+            return candidate
+    return None
+
+
+def archived_story(story):
+    return any(a.get("story") and a.get("root") == story and a["archived_at"] >= story_activity(story) for a in list_archives())
+
+
 def archive_board(session, board_id):
     registration = os.path.join(REGISTRY, session, f"{board_id}.json")
     view = next((b for s in state["data"].get("sessions", []) if s["name"] == session for b in s["boards"] if b["id"] == board_id), None)
-    if not view or view.get("auto") or view.get("offline") or not os.path.isfile(registration):
+    story = story_root(board_id) if view and view.get("auto") else None
+    if not view or view.get("offline") or (view.get("auto") and not story) or (not story and not os.path.isfile(registration)):
         return None
     archive = f"{session}/{board_id}-{time.strftime('%Y%m%d-%H%M%S')}"
     dest = os.path.join(ARCHIVE_DIR, archive)
     os.makedirs(dest)
     history = read_jsonl(events_path(session, board_id))
-    root = json.load(open(registration, encoding="utf-8")).get("root", "")
-    summary = archive_summary(view, archive, root)
+    root = story or json.load(open(registration, encoding="utf-8")).get("root", "")
+    summary = dict(archive_summary(view, archive, root), story=bool(story))
     json.dump(dict(view, events=list(reversed(history))[:1000], archive=archive, archived=True, archived_at=summary["archived_at"]),
               open(os.path.join(dest, "snapshot.json"), "w", encoding="utf-8"), ensure_ascii=False)
     json.dump(summary, open(os.path.join(dest, "summary.json"), "w", encoding="utf-8"), ensure_ascii=False)
-    shutil.move(registration, os.path.join(dest, "board.json"))
+    if not story:
+        shutil.move(registration, os.path.join(dest, "board.json"))
     for src, name in ((os.path.join(REGISTRY, session, f"{board_id}.dispatch.jsonl"), "dispatch.jsonl"), (events_path(session, board_id), "events.jsonl")):
         if os.path.exists(src):
             shutil.move(src, os.path.join(dest, name))
@@ -802,10 +864,11 @@ def restore_board(archive):
     summary = json.load(open(os.path.join(src, "summary.json"), encoding="utf-8"))
     session, board_id = summary["session"], summary["id"]
     registration = os.path.join(REGISTRY, session, f"{board_id}.json")
-    if os.path.exists(registration):
-        return "同名看板已经重新登记，先处理它再恢复"
-    os.makedirs(os.path.dirname(registration), exist_ok=True)
-    shutil.move(os.path.join(src, "board.json"), registration)
+    if not summary.get("story"):
+        if os.path.exists(registration):
+            return "同名看板已经重新登记，先处理它再恢复"
+        os.makedirs(os.path.dirname(registration), exist_ok=True)
+        shutil.move(os.path.join(src, "board.json"), registration)
     for name, dest in (("dispatch.jsonl", os.path.join(REGISTRY, session, f"{board_id}.dispatch.jsonl")), ("events.jsonl", events_path(session, board_id))):
         if os.path.exists(os.path.join(src, name)) and not os.path.exists(dest):
             os.makedirs(os.path.dirname(dest), exist_ok=True)
@@ -829,14 +892,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         path = urlparse(self.path).path
+        focus = parse_qs(urlparse(self.path).query).get("board", [""])[0]
         if path == "/":
             return self.send(200, open(os.path.join(HERE, "index.html"), "rb").read(), "text/html; charset=utf-8")
         if path == "/api/state":
-            return self.send(200, json.dumps(state["data"], ensure_ascii=False).encode(), "application/json; charset=utf-8")
+            return self.send(200, json.dumps(view_for(state["data"], focus), ensure_ascii=False).encode(), "application/json; charset=utf-8")
         if path == "/api/stream":
-            return self.stream()
+            return self.stream(focus)
         if path.startswith("/files/"):
             return self.file(unquote(path[len("/files/"):]))
+        if path == "/api/issue":
+            issue = find_issue(focus, parse_qs(urlparse(self.path).query).get("id", [""])[0])
+            if not issue:
+                return self.send(404, "没有这条缺陷".encode(), "text/plain; charset=utf-8")
+            return self.send(200, json.dumps(issue, ensure_ascii=False).encode(), "application/json; charset=utf-8")
         if path == "/api/archive":
             src = archive_dir(parse_qs(urlparse(self.path).query).get("id", [""])[0])
             if not src:
@@ -874,7 +943,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send(409, error.encode(), "text/plain; charset=utf-8")
             return reply(200, dict(ok=True))
 
-    def stream(self):
+    def stream(self, focus=""):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-store")
@@ -886,7 +955,7 @@ class Handler(BaseHTTPRequestHandler):
                     if state["version"] == seen:
                         changed.wait(timeout=15)
                     payload, seen = state["data"], state["version"]
-                self.wfile.write(b"data: " + json.dumps(payload, ensure_ascii=False).encode() + b"\n\n" if payload else b": waiting\n\n")
+                self.wfile.write(b"data: " + json.dumps(view_for(payload, focus), ensure_ascii=False).encode() + b"\n\n" if payload else b": waiting\n\n")
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError):
             return

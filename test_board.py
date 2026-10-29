@@ -189,7 +189,62 @@ def test_brief_report_pairs_become_dev_progress():
         assert got == {"api": ("接口", 0, None), "deploy": ("部署", 0, "in-progress"), "fe": ("前端带出时区", 1, "done")}
 
 
+def test_ac_content_and_evidence_columns():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        os.makedirs(os.path.join(root, "docs", "shots"))
+        open(os.path.join(root, "docs", "shots", "AC1-a.png"), "wb").write(b"x")
+        open(os.path.join(root, "docs", "AC.md"), "w", encoding="utf-8").write(
+            "| AC | 内容 | 最终状态 | 证据 |\n| :-- | :-- | :-- | :-- |\n| AC1 | 新建带出时区 | PASS | shots/AC1-*.png |\n")
+        row = serve.ac_rows(dict(id="TASK-10", name="TASK-10", root=root))[0]
+        assert row["card"] == "TASK-10"
+        assert serve.ac_rows(dict(id="PROJ-399-x", name="PROJ-399-x", root=root))[0]["card"] == "399"
+        assert row["desc"] == "新建带出时区" and row["qam"] == "" and "evidence" not in row
+        assert row["shots"] == ["docs/shots/AC1-a.png"]
+
+
+def test_event_log_is_trimmed():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        path = os.path.join(root, "e.jsonl")
+        open(path, "w", encoding="utf-8").write("".join(json.dumps(dict(i=i, pad="x" * 300)) + "\n" for i in range(3000)))
+        serve.trim_log(path, keep=100)
+        lines = open(path, encoding="utf-8").readlines()
+        assert len(lines) == 100 and json.loads(lines[-1])["i"] == 2999
+
+
+def test_stream_view_slims_other_boards():
+    full = dict(id="b", session="s", rows=[dict(card="1", ac="AC1", status="PASS", qam="long" * 50)],
+                issues=[dict(id="I-1", status="open", round=1, repro="r" * 500)], plans=[dict(id="P", tasks=2, done=1, tracked=True, task_list=[1, 2])])
+    data = dict(sessions=[dict(name="s", boards=[full, dict(full, id="c")])])
+    view = serve.view_for(data, "s/c")
+    b, c = view["sessions"][0]["boards"]
+    assert b["slim"] and b["rows"] == [dict(card="1", status="PASS")] and "repro" not in b["issues"][0] and "task_list" not in b["plans"][0]
+    assert "slim" not in c and "repro" not in c["issues"][0] and c["issues"][0]["status"] == "open"
+    serve.state["data"] = data
+    assert serve.find_issue("s/c", "I-1")["repro"] == "r" * 500 and serve.find_issue("s/c", "I-9") is None
+
+
+def test_archived_story_stays_hidden_until_new_activity():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as home:
+        serve.REGISTRY, serve.ARCHIVE_DIR = home, os.path.join(home, ".archive")
+        story = os.path.join(home, "TASK-11")
+        os.makedirs(os.path.join(story, "docs"))
+        ac = os.path.join(story, "docs", "AC.md")
+        open(ac, "w", encoding="utf-8").write("| AC | 最终状态 |\n")
+        os.utime(ac, (1000, 1000))
+        os.makedirs(os.path.join(serve.ARCHIVE_DIR, "s", "story-TASK-11-1"))
+        json.dump(dict(archive="s/story-TASK-11-1", session="s", id="story-TASK-11", root=story, story=True, archived_at=2000),
+                  open(os.path.join(serve.ARCHIVE_DIR, "s", "story-TASK-11-1", "summary.json"), "w"))
+        assert serve.archived_story(story)
+        os.utime(ac, (3000, 3000))
+        assert not serve.archived_story(story)
+        assert serve.restore_board("s/story-TASK-11-1") is None and serve.list_archives() == []
+
+
 if __name__ == "__main__":
+    test_ac_content_and_evidence_columns()
+    test_event_log_is_trimmed()
+    test_stream_view_slims_other_boards()
+    test_archived_story_stays_hidden_until_new_activity()
     test_brief_report_pairs_become_dev_progress()
     test_recent_story_without_agents_is_found()
     test_report_follows_newer_status_file_in_same_folder()
