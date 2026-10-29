@@ -78,7 +78,7 @@ table.mini td { padding: 3px 6px; }
 .chip.accept { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
 .dreply { display: flex; gap: 6px; align-items: flex-end; }
 .dreply textarea { flex: 1; font: inherit; font-size: 13px; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; resize: vertical; }
-.other-needs summary { cursor: pointer; color: var(--muted); font-size: 12.5px; margin-top: 4px; }
+.needs.reminders { border-left-color: var(--muted); }
 .issue-row { cursor: pointer; border-radius: 6px; padding: 4px; margin: -4px; }
 .issue-row:hover { background: var(--panel-2); }
 .issue-row.closed { opacity: .55; }
@@ -407,15 +407,10 @@ function decisionCard(d) {
     <div class="dreply" ${openReplies.has(key) ? "" : "hidden"}><textarea class="reply-text" rows="2" placeholder="写给这个会话的回复，发送后它会继续" data-key="${esc(key)}">${esc(replyDrafts.get(key) || "")}</textarea>
       <button type="button" class="chip accept" data-reply-send>发送</button></div></li>`;
 }
-function needsBlock(decisions, needs, board, withBoardTag) {
-  const head = decisions.length ? `<ul class="decisions">${decisions.map(decisionCard).join("")}</ul>` : "";
-  if (!needs.length) return head || `<div class="empty">现在没有需要你处理的事。</div>`;
-  const other = needsList(needs, board, withBoardTag);
-  return head ? `${head}<details class="other-needs" ${otherNeedsOpen ? "open" : ""}><summary>其他提醒 · ${needs.length}</summary>${other}</details>` : other;
+function decisionsBlock(decisions) {
+  return decisions.length ? `<ul class="decisions">${decisions.map(decisionCard).join("")}</ul>` : `<div class="empty">现在没有要你决定的事。</div>`;
 }
 const openReplies = new Set(), replyDrafts = new Map();
-let otherNeedsOpen = false;
-document.addEventListener("toggle", e => { if (e.target.classList?.contains("other-needs")) otherNeedsOpen = e.target.open; }, true);
 document.addEventListener("input", e => { if (e.target.classList?.contains("reply-text")) replyDrafts.set(e.target.dataset.key, e.target.value); });
 document.addEventListener("focusout", e => { if (e.target.classList?.contains("reply-text") && renderQueued) setTimeout(() => { renderQueued = false; render(false); }, 0); });
 async function sendReply(card, text, button) {
@@ -482,8 +477,8 @@ function renderOverview() {
   const fresh = new Set(firstVisit ? [] : boards.map(boardKey).filter(k => !seen.has(k)));
   boards.forEach(b => seen.add(boardKey(b))); saveSet(SEEN_KEY, seen);
   put(document.getElementById("crumb")).innerHTML = `订阅 ${mine.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
-  const needs = mine.flatMap(b => (b.needs || []).map(n => ({ ...n, board: b })));
-  const otherNeeds = others.reduce((n, b) => n + (b.needs || []).length, 0);
+  const waitingOn = b => myDecisions.filter(d => d.session === b.session && d.board === b.id).length;
+  const reminders = b => (b.needs || []).length ? ` · <span class="muted">${b.needs.length} 条提醒</span>` : "";
   const subBtn = (attr, key, text) => `<button type="button" class="chip sub" ${attr}="${esc(key)}">${text}</button>`;
   const row = b => {
     const off = subBtn("data-unsub", boardKey(b), "取消订阅");
@@ -494,10 +489,10 @@ function renderOverview() {
     if (!ws.length && share === null) return `<div class="bwrap"><a class="brow compact" href="${boardHref(b)}">
       <div><div class="name">${esc(b.name)}${autoTag}</div><div class="sub">${esc(b.subtitle)}</div></div>
       <div class="sub">认领 ${b.claimed.map(t => `<span class="chip mono">${esc(t)}</span>`).join(" ")} · 还没有 worker</div></a>${off}</div>`;
-    return `<div class="bwrap"><a class="brow ${(b.needs || []).length ? "attn" : ""}" href="${boardHref(b)}">
+    return `<div class="bwrap"><a class="brow ${waitingOn(b) ? "attn" : ""}" href="${boardHref(b)}">
       <div><div class="name">${esc(b.name)}${autoTag}</div><div class="sub">${esc(b.subtitle)}</div>
         <div class="tabs">${lines.map(t => `<span class="chip mono">${esc(t)}</span>`).join("")}</div></div>
-      <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</div></div>
+      <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${waitingOn(b) ? ` · <span style="color:var(--fail)">${waitingOn(b)} 个在等你决定</span>` : ""}${reminders(b)}</div></div>
       <div>${share === null ? `<div class="sub">${Object.keys(b.cards || {}).length ? `${Object.keys(b.cards).length} 张卡 · 未配置 AC 数据源` : "未配置 AC 数据源"}</div>`
         : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${(r => `${r.pct} ${r.label}${r.note ? ` · ${r.note.split(" · ")[0]}` : ""}`)(ringStats(b))} · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
         ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}${(b.demos || []).length ? ` · ▶ ${b.demos.length} 演示` : ""}${b.closeout?.state === "done" ? " · ✅ 已收尾" : ""}</div>`}</div>
@@ -507,13 +502,13 @@ function renderOverview() {
   const catalogSessions = sessions.map(s => ({ s, bs: s.boards.filter(b => !isSubscribed(b)) })).filter(x => x.bs.length);
   const open = catalogOpen ?? (!mine.length || fresh.size > 0);
   const catalog = catalogSessions.length ? `<details class="panel catalog" id="catalog" ${open ? "open" : ""}>
-      <summary><h2 style="display:inline">可订阅 · ${others.length} 个看板</h2>${otherNeeds ? ` <span style="color:var(--warn);font-size:12.5px">其中 ${otherNeeds} 项需要你</span>` : ""}${fresh.size ? ` <span class="chip new">${fresh.size} 个新出现</span>` : ""}</summary>
+      <summary><h2 style="display:inline">可订阅 · ${others.length} 个看板</h2>${fresh.size ? ` <span class="chip new">${fresh.size} 个新出现</span>` : ""}</summary>
       ${catalogSessions.map(({ s, bs }) => `<div class="cat-session"><div class="session-head"><b>${esc(s.name)}</b>${subBtn("data-sub", wildcard(s.name), "订阅整个 session（含以后的新看板）")}</div>
         <div class="cat-list">${bs.map(b => `<div class="cat-item"><span class="name">${esc(b.name)}</span>${b.auto ? ` <span class="chip">未登记</span>` : ""}${fresh.has(boardKey(b)) ? ` <span class="chip new">新</span>` : ""}
-          <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
+          <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${reminders(b)}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
     </details>` : "";
   put(document.getElementById("app")).innerHTML = mine.length ? `
-    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${myDecisions.length ? ` · ${myDecisions.length} 个会话在等你决定` : ""}</h2>${needsBlock(myDecisions, needs, null, true)}</section><div class="panel rail-box" id="rail-slot"></div></div>
+    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${myDecisions.length ? ` · ${myDecisions.length} 个会话在等你决定` : ""}</h2>${decisionsBlock(myDecisions)}</section><div class="panel rail-box" id="rail-slot"></div></div>
     ${mySessions.map(({ s, bs }) => `<section class="session" aria-label="session ${esc(s.name)}">
       <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
         ${subs.has(wildcard(s.name)) ? subBtn("data-unsub-session", s.name, "取消订阅 session") : ""}</div>
@@ -592,13 +587,14 @@ let shown = [];
 function renderBoardShell(b) {
   ["app", "crumb"].forEach(id => renderedHTML.delete(document.getElementById(id)));
   document.getElementById("title").textContent = b.name;
-  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有需要你处理的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto && !String(b.id).startsWith("story-") ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
+  document.getElementById("crumb").innerHTML = `<a href="#/">全部看板</a><span>›</span><span class="mono">${esc(b.session)}</span><span>›</span><span>${esc(b.subtitle)}</span><span class="badge-ok" id="ok-badge" hidden>· ✅ 没有要你决定的事</span><button type="button" class="chip sub-here" data-sub-here id="sub-here"></button>${b.archived ? `<span class="pill" style="color:var(--warn)">只读快照 · 归档于 ${esc(fmtTime(b.archived_at || 0))}</span><button type="button" class="chip" data-restore="${esc(b.archive)}">恢复</button>` : b.auto && !String(b.id).startsWith("story-") ? "" : `<button type="button" class="chip" data-archive-board title="保存快照并移到已归档">归档</button>`}`;
   const hasRows = (b.rows || []).length > 0, cards = Object.keys(b.cards || {});
   document.getElementById("app").innerHTML = `
     <div class="top-row" id="top-row"><section class="panel hero ${hasRows ? "" : "flat"}" aria-label="总体进度" id="hero"><div class="hero-main" id="hero-main"></div></section><div class="panel rail-box" id="rail-slot"></div></div>
     <section class="panel" aria-labelledby="h-demos" id="demos-sec" hidden><h2 id="h-demos">MVP 演示</h2><div id="demos"></div></section>
     <section class="panel" aria-labelledby="h-closeout" id="closeout-sec" hidden><h2 id="h-closeout">收尾</h2><div id="closeout"></div></section>
     <section class="panel needs" aria-labelledby="h-needs" id="needs-sec"><h2 id="h-needs">需要你</h2><div id="needs"></div></section>
+    <section class="panel needs reminders" aria-labelledby="h-reminders" id="reminders-sec"><h2 id="h-reminders">提醒</h2><div id="reminders"></div></section>
     <section aria-labelledby="h-agents"><h2 id="h-agents">Workers · 按 W· tab</h2><div id="agents"></div></section>
     <div class="side-grid" id="side"></div>
     ${hasRows && cards.length ? `<section aria-labelledby="h-cards"><h2 id="h-cards">${cards.length} 张卡</h2><div class="cards" id="cards"></div></section>` : ""}
@@ -986,9 +982,11 @@ function render(routeChanged) {
   if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = true; renderBoardShell(b); view = key; }
   const needs = b.needs || [], waiting = (STATE.decisions || []).filter(d => d.session === b.session && d.board === b.id);
   mountRail(); renderHero(b);
-  document.getElementById("needs-sec").hidden = !needs.length && !waiting.length;
-  put(document.getElementById("needs")).innerHTML = needsBlock(waiting, needs, b, false);
-  document.getElementById("ok-badge").hidden = needs.length + waiting.length > 0;
+  document.getElementById("needs-sec").hidden = !waiting.length;
+  put(document.getElementById("needs")).innerHTML = decisionsBlock(waiting);
+  document.getElementById("reminders-sec").hidden = !needs.length;
+  put(document.getElementById("reminders")).innerHTML = needsList(needs, b, false);
+  document.getElementById("ok-badge").hidden = waiting.length > 0;
   document.getElementById("sub-here").textContent = isSubscribed(b) ? "★ 已订阅 · 取消" : "☆ 订阅这块看板";
   document.getElementById("sub-here").hidden = !!b.archived;
   renderAgents(b); renderRail(); renderDemos(b); renderCloseout(b); renderSide(b); renderCards(b); renderTable(b);
