@@ -320,6 +320,16 @@ def test_short_question_takes_options_from_the_list_above():
     long_question = "\u23fa Steps\n\n  1. Record the demo\n\n  " + "Should we start these now, given everything above? " * 2
     assert decisions.parse_screen(synthetic_screen(long_question), "idle")["options"] == []
 
+def test_decision_belongs_to_subscribable_board():
+    ws = ["/w"]
+    boards = [dict(id="alpha", root="/w/alpha", tabs=["W·alpha"]), dict(id="beta", name="Beta", root="", tabs=["W·work"])]
+    pick = lambda **d: serve.board_of_decision(dict(dict(story="", tab=""), **d), boards, {"/w/gamma": []}, ["alpha", "beta", "story-gamma"], ws)
+    assert pick(story="alpha") == "alpha"
+    assert pick(story="gamma") == "story-gamma"
+    assert pick(tab="work") == "beta"
+    assert pick(tab="Beta") == "beta"
+    assert pick(tab="1") == ""
+    assert serve.board_of_decision(dict(story="", tab="1"), [], {}, ["auto"], ws) == "auto"
 
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
@@ -347,4 +357,5 @@ if __name__ == "__main__":
     test_numbered_questions_stay_in_the_question_text()
     test_blocked_choice_box_and_permission_prompt()
     test_short_question_takes_options_from_the_list_above()
+    test_decision_belongs_to_subscribable_board()
     print("ok")

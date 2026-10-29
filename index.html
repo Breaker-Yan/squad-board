@@ -454,6 +454,7 @@ const subs = loadSet(SUB_KEY), seen = loadSet(SEEN_KEY), firstVisit = !seen.size
 let catalogOpen = null;
 const wildcard = session => `${session}/*`;
 const isSubscribed = b => subs.has(boardKey(b)) || subs.has(wildcard(b.session));
+const isDecisionSubscribed = d => subs.has(wildcard(d.session)) || subs.has(`${d.session}/${d.board}`);
 
 function unsubscribe(b) {
   if (subs.has(boardKey(b))) subs.delete(boardKey(b));
@@ -477,6 +478,7 @@ document.addEventListener("toggle", e => { if (e.target.classList?.contains("arc
 function renderOverview() {
   document.getElementById("title").textContent = "Squad 看板";
   const sessions = STATE.sessions, boards = allBoards(), mine = boards.filter(isSubscribed), others = boards.filter(b => !isSubscribed(b));
+  const myDecisions = (STATE.decisions || []).filter(isDecisionSubscribed);
   const fresh = new Set(firstVisit ? [] : boards.map(boardKey).filter(k => !seen.has(k)));
   boards.forEach(b => seen.add(boardKey(b))); saveSet(SEEN_KEY, seen);
   put(document.getElementById("crumb")).innerHTML = `订阅 ${mine.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
@@ -511,7 +513,7 @@ function renderOverview() {
           <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${(b.needs || []).length ? ` · <span style="color:var(--fail)">${b.needs.length} 项需要你</span>` : ""}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
     </details>` : "";
   put(document.getElementById("app")).innerHTML = mine.length ? `
-    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${(STATE.decisions || []).length ? ` · ${STATE.decisions.length} 个会话在等你决定` : ""}</h2>${needsBlock(STATE.decisions || [], needs, null, true)}</section><div class="panel rail-box" id="rail-slot"></div></div>
+    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${myDecisions.length ? ` · ${myDecisions.length} 个会话在等你决定` : ""}</h2>${needsBlock(myDecisions, needs, null, true)}</section><div class="panel rail-box" id="rail-slot"></div></div>
     ${mySessions.map(({ s, bs }) => `<section class="session" aria-label="session ${esc(s.name)}">
       <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
         ${subs.has(wildcard(s.name)) ? subBtn("data-unsub-session", s.name, "取消订阅 session") : ""}</div>
@@ -982,7 +984,7 @@ function render(routeChanged) {
   }
   if (!b) { renderOverview(); mountRail(); renderRail(); view = key; firstRender = false; return; }
   if (view !== key) { filters.card = ""; filters.q = ""; filters.active.clear(); filters.group = ""; issuesOpenOnly = true; renderBoardShell(b); view = key; }
-  const needs = b.needs || [], waiting = (STATE.decisions || []).filter(d => d.session === b.session);
+  const needs = b.needs || [], waiting = (STATE.decisions || []).filter(d => d.session === b.session && d.board === b.id);
   mountRail(); renderHero(b);
   document.getElementById("needs-sec").hidden = !needs.length && !waiting.length;
   put(document.getElementById("needs")).innerHTML = needsBlock(waiting, needs, b, false);

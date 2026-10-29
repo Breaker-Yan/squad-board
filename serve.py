@@ -596,8 +596,17 @@ def lead_decisions(session, agents, tabs, workspaces):
         if cached["parsed"]:
             story = story_of(agent_dir(agent), workspaces)
             out.append(dict(cached["parsed"], session=session, pane=agent["pane_id"], status=agent["agent_status"],
-                            title=agent.get("terminal_title_stripped") or "lead", story=os.path.basename(story) if story else ""))
+                            title=agent.get("terminal_title_stripped") or "lead", story=os.path.basename(story) if story else "",
+                                   tab=tabs.get(agent["tab_id"], "")))
     return out
+
+
+def board_of_decision(decision, boards, stories, view_ids, workspaces):
+    board_of_story = {os.path.basename(story): f"story-{os.path.basename(story)}" for story in stories}
+    board_of_story.update({os.path.basename(s): b["id"] for b in boards if (s := story_of(b.get("root", ""), workspaces))})
+    tab = decision.get("tab", "")
+    by_tab = next((b["id"] for b in boards if tab and (tab in (b["id"], b.get("name")) or claims(f"W·{tab}", b.get("tabs", [])))), "")
+    return board_of_story.get(decision["story"]) or by_tab or (view_ids[0] if len(view_ids) == 1 else "")
 
 
 def snapshot():
@@ -616,7 +625,7 @@ def snapshot():
         agents, tabs = layout
         layouts[session] = [a["name"] for a in agents if a.get("name")]
         owned, by_story, loose = assign_workers(boards, agents, tabs, workspaces)
-        decisions += lead_decisions(session, agents, tabs, workspaces)
+        waiting = lead_decisions(session, agents, tabs, workspaces)
         leads = [a for a in agents if not a.get("name") and not tabs.get(a["tab_id"], "").startswith("W·")]
         if loose and len(by_story) == 1 and len(leads) == 1:
             next(iter(by_story.values())).extend(loose)
@@ -635,6 +644,9 @@ def snapshot():
                   for story, members in sorted(by_story.items())]
         if loose:
             views.append(dict(board_snapshot(session, session_board(session, loose, agents, tabs), loose, tabs, exact=True), auto=True))
+        for decision in waiting:
+            decision["board"] = board_of_decision(decision, boards, by_story, [v["id"] for v in views], workspaces)
+        decisions += waiting
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
     idle = recent_stories(workspaces, shown)
