@@ -5,7 +5,7 @@ A local, zero-dependency live board for multi-agent squads running in [herdr](ht
 One process watches every running herdr session and shows, per lead: worker status, what each worker is doing, whether its report is up to date, and a "needs you" list (blocked workers, stale reports, vanished workers, pending questions). Optional panels show acceptance progress, issues and sub-plans when the lead declares data sources.
 
 - Python 3 standard library only, no install step
-- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a worker pane, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
+- Reads herdr through its CLI and reads files; never prompts workers or writes to the project. Its only actions — **⤢ focus** a pane, **reply** to a lead that is waiting on you, **archive** / **restore** a board under `~/.squad-board` — are accepted from loopback only
 - Serves files only from each board's `root`, with an extension allowlist
 - Binds `127.0.0.1` by default
 
@@ -103,6 +103,10 @@ Point `sources.demos` at where you drop screen recordings, e.g. `["demos/*.mp4",
 ## Closeout
 
 Point `sources.closeout` at the task's `CLOSEOUT.md`: first line `STATUS: in-progress | done`, `- [x]` / `- [ ]` checklist items, and `## ` sections holding Markdown tables (e.g. deleted / kept / undecided). The board shows a **收尾** panel with checklist progress and the tables, logs status changes in the feed, and a phase `{"label": "收尾", "auto": "closeout"}` turns green once it is done. Archived boards keep the closeout state.
+
+## Waiting on you
+
+Leads (nameless Claude Code agents outside `W·` tabs) that stopped to ask you something are listed first under **需要你**, with their question, the options they listed, the `※ recap` line and the grey suggested reply from their input box. The screen is read with `herdr pane read --source visible --ansi` and parsed by `decisions.py`; it is re-read only when the agent's state changes or every 30 s. A free-text question can be answered in place: **采纳建议** sends the suggested reply, **回复…** sends your own text (typed into the lead's input box and submitted). The reply is refused when the input box already holds text you typed but did not send, and selection or permission prompts must still be answered in the session (**⤢ 定位**). Other reminders (stale reports, idle workers) fold under **其他提醒**.
 
 ## Archiving a board
 

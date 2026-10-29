@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 
+import decisions
 import serve
 
 
@@ -240,6 +241,86 @@ def test_archived_story_stays_hidden_until_new_activity():
         assert serve.restore_board("s/story-TASK-11-1") is None and serve.list_archives() == []
 
 
+def synthetic_screen(body, prompt="", recap="", done="Brewed for 39s \u00b7 done 4:36 PM"):
+    esc = "\x1b"
+    rule = esc + "[38;2;136;136;136m" + "\u2500" * 40 + esc + "[0m"
+    lines = ["", "  " + esc + "[0m" + body.replace("\n", "\n  "), ""]
+    if done:
+        lines += [esc + "[38;2;153;153;153m\u273b" + esc + "[0m " + esc + "[38;2;153;153;153m" + done + esc + "[0m", ""]
+    if recap:
+        lines += [esc + "[38;2;153;153;153m\u203b " + esc + "[1mrecap: " + esc + "[3m" + recap + esc + "[0m", ""]
+    lines += [rule, "\u276f " + prompt, rule, "  " + esc + "[38;2;255;107;128m\u23f5\u23f5 bypass permissions on" + esc + "[0m"]
+    return "\n".join(lines)
+
+
+DIM = "\x1b[0m\x1b[2m"
+
+
+def test_input_state_tells_empty_suggestion_and_typed_apart():
+    assert decisions.input_state(synthetic_screen("hi")) == "empty"
+    assert decisions.input_state(synthetic_screen("hi", DIM + "go on\x1b[0m")) == "suggestion"
+    assert decisions.input_state(synthetic_screen("hi", "half typed")) == "typed"
+    assert decisions.input_state("no box here\n") == "unknown"
+
+
+def test_dim_suggestion_is_returned_and_typed_text_is_not():
+    body = "\u23fa Merge the PR first?"
+    shown = decisions.parse_screen(synthetic_screen(body, DIM + "yes, merge\x1b[0m"), "idle")
+    assert shown["suggestion"] == "yes, merge" and shown["kind"] == "question"
+    assert shown["done_at"] == "4:36 PM"
+    assert decisions.parse_screen(synthetic_screen(body, "my own words"), "idle")["suggestion"] == ""
+    assert decisions.parse_screen(synthetic_screen(body), "idle")["suggestion"] == ""
+
+
+def test_report_without_question_is_not_a_decision():
+    assert decisions.parse_screen(synthetic_screen("\u23fa All checks passed.\nRegression is complete."), "idle") is None
+    assert decisions.parse_screen(synthetic_screen("\u23fa Merge the PR first?"), "working") is None
+
+
+def test_recap_asking_for_a_decision_counts_without_question_mark():
+    body = "\u23fa Tests are green.\nPR is ready."
+    recap = "PR is ready. \u4e0b\u4e00\u6b65\u9700\u8981\u4f60\u786e\u8ba4\u662f\u5426\u5408\u5e76\u3002"
+    found = decisions.parse_screen(synthetic_screen(body, recap=recap), "idle")
+    assert found["question"] == recap and found["recap"] == recap
+    assert decisions.parse_screen(synthetic_screen(body, recap="PR is ready, nothing pending."), "idle") is None
+
+
+def test_dash_options_follow_the_question():
+    body = "\u23fa Which way should the cache go?\n- Keep it in memory: simple,\n  lost on restart\n- Use Redis: shared"
+    found = decisions.parse_screen(synthetic_screen(body), "idle")
+    assert found["question"] == "Which way should the cache go?"
+    assert found["options"] == ["Keep it in memory: simple, lost on restart", "Use Redis: shared"]
+
+
+def test_numbered_questions_stay_in_the_question_text():
+    body = "\u23fa Things only you can decide\n1. Is the old endpoint still needed?\n2. Who owns the follow-up card?"
+    found = decisions.parse_screen(synthetic_screen(body), "done")
+    assert found["options"] == []
+    assert found["question"] == "Things only you can decide\n1. Is the old endpoint still needed?\n2. Who owns the follow-up card?"
+
+
+def test_blocked_choice_box_and_permission_prompt():
+    esc = "\x1b"
+    choice = "\n".join(["  Which database?", "", esc + "[36m\u276f 1. Postgres" + esc + "[0m", "  2. MySQL", "", "  Enter to select"])
+    found = decisions.parse_screen(choice, "blocked")
+    assert (found["kind"], found["question"], found["options"]) == ("choice", "Which database?", ["Postgres", "MySQL"])
+    approval = "\n".join(["  Run command?", "  rm -rf build", "", "  Do you want to proceed?", "  \u276f 1. Yes", "    2. No"])
+    found = decisions.parse_screen(approval, "blocked")
+    assert (found["kind"], found["question"], found["options"]) == ("approval", "Do you want to proceed?", ["Yes", "No"])
+
+
+def test_short_question_takes_options_from_the_list_above():
+    steps = "\u23fa Next steps\n\n  1. Record the demo\n  2. Comment on the card\n  3. Move the card on"
+    body = steps + "\n\n  Start these three now?"
+    found = decisions.parse_screen(synthetic_screen(body), "idle")
+    assert found["question"] == "Start these three now?"
+    assert found["options"] == ["Record the demo", "Comment on the card", "Move the card on"]
+    own = "\u23fa Steps\n\n  1. Record the demo\n  2. Comment\n\n  Which first?\n  - Demo\n  - Comment"
+    assert decisions.parse_screen(synthetic_screen(own), "idle")["options"] == ["Demo", "Comment"]
+    long_question = "\u23fa Steps\n\n  1. Record the demo\n\n  " + "Should we start these now, given everything above? " * 2
+    assert decisions.parse_screen(synthetic_screen(long_question), "idle")["options"] == []
+
+
 if __name__ == "__main__":
     test_ac_content_and_evidence_columns()
     test_event_log_is_trimmed()
@@ -258,4 +339,12 @@ if __name__ == "__main__":
     test_workers_group_by_tab_then_story_then_session()
     test_tab_claims_follow_continuation_suffix_only()
     test_latest_dispatch_wins_and_old_report_is_stale()
+    test_input_state_tells_empty_suggestion_and_typed_apart()
+    test_dim_suggestion_is_returned_and_typed_text_is_not()
+    test_report_without_question_is_not_a_decision()
+    test_recap_asking_for_a_decision_counts_without_question_mark()
+    test_dash_options_follow_the_question()
+    test_numbered_questions_stay_in_the_question_text()
+    test_blocked_choice_box_and_permission_prompt()
+    test_short_question_takes_options_from_the_list_above()
     print("ok")

@@ -571,8 +571,38 @@ def recent_stories(workspaces, shown):
     return found
 
 
+DECISION_TTL = 30
+screen_cache = {}
+
+
+def read_screen(session, pane):
+    return run(["herdr", "--session", session, "pane", "read", pane, "--source", "visible", "--ansi"], timeout=10)
+
+
+def lead_decisions(session, agents, tabs, workspaces):
+    try:
+        from decisions import parse_screen
+    except ImportError:
+        return []
+    out = []
+    for agent in agents:
+        if agent.get("name") or tabs.get(agent["tab_id"], "").startswith("W·") or agent["agent_status"] == "working":
+            continue
+        key, seq = (session, agent["pane_id"]), agent.get("state_change_seq")
+        cached = screen_cache.get(key)
+        if not cached or cached["seq"] != seq or time.time() - cached["at"] > DECISION_TTL:
+            parsed = parse_screen(read_screen(session, agent["pane_id"]), agent["agent_status"])
+            cached = screen_cache[key] = dict(seq=seq, at=time.time(), parsed=parsed)
+        if cached["parsed"]:
+            story = story_of(agent_dir(agent), workspaces)
+            out.append(dict(cached["parsed"], session=session, pane=agent["pane_id"], status=agent["agent_status"],
+                            title=agent.get("terminal_title_stripped") or "lead", story=os.path.basename(story) if story else ""))
+    return out
+
+
 def snapshot():
     sessions = []
+    decisions = []
     registered = load_boards()
     workspaces = load_config().get("workspaces", [])
     shown = set()
@@ -586,6 +616,7 @@ def snapshot():
         agents, tabs = layout
         layouts[session] = [a["name"] for a in agents if a.get("name")]
         owned, by_story, loose = assign_workers(boards, agents, tabs, workspaces)
+        decisions += lead_decisions(session, agents, tabs, workspaces)
         leads = [a for a in agents if not a.get("name") and not tabs.get(a["tab_id"], "").startswith("W·")]
         if loose and len(by_story) == 1 and len(leads) == 1:
             next(iter(by_story.values())).extend(loose)
@@ -610,7 +641,7 @@ def snapshot():
     if idle:
         sessions.append(dict(name="工作区（无 herdr 会话）", alive=True,
                              boards=[dict(board_snapshot("workspace", story_board(story, [], {}), [], {}, exact=True), auto=True) for story in idle]))
-    return dict(sessions=sessions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
+    return dict(sessions=sessions, decisions=decisions, archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
 
 
 def keyed(items, key, value):
@@ -740,7 +771,30 @@ def refresh_activity():
 
 def focusable(session, pane):
     return any(w.get("pane") == pane for s in state["data"].get("sessions", []) if s["name"] == session
-               for b in s["boards"] for w in b.get("workers", []))
+               for b in s["boards"] for w in b.get("workers", [])) or awaiting(session, pane) is not None
+
+
+def awaiting(session, pane):
+    return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane), None)
+
+
+def send_reply(session, pane, text):
+    from decisions import input_state
+    decision = awaiting(session, pane)
+    if not decision:
+        return 404, "这个会话现在没有在等你决定"
+    if decision.get("kind") != "question":
+        return 409, "这是选择框或权限确认，请定位到会话里操作"
+    text = " ".join(str(text).split())
+    if not text or len(text) > 2000:
+        return 400, "回复不能为空，也不能超过 2000 字"
+    box = input_state(read_screen(session, pane))
+    if box not in ("empty", "suggestion"):
+        return 409, "会话输入框里有你还没发送的内容，没有覆盖；请到会话里处理" if box == "typed" else "读不到会话的输入框，没有发送"
+    run(["herdr", "--session", session, "pane", "send-text", pane, text], timeout=10)
+    run(["herdr", "--session", session, "pane", "send-keys", pane, "Enter"], timeout=10)
+    screen_cache.pop((session, pane), None)
+    return 200, "已发送"
 
 
 def slim(board):
@@ -915,17 +969,20 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        if path not in ("/api/focus", "/api/archive", "/api/restore"):
+        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply"):
             return self.send(404, b"not found", "text/plain")
         if self.client_address[0] not in LOCAL_CLIENTS:
             return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
         try:
-            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 4096)))
+            body = json.loads(self.rfile.read(min(int(self.headers.get("Content-Length") or 0), 16384)))
             if not isinstance(body, dict):
                 raise TypeError
         except (ValueError, TypeError):
             return self.send(400, b"bad request", "text/plain")
         reply = lambda code, data: self.send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        if path == "/api/reply":
+            code, message = send_reply(body.get("session", ""), body.get("pane", ""), body.get("text", ""))
+            return reply(code, dict(ok=code == 200, message=message))
         if path == "/api/focus":
             session, pane = body.get("session", ""), body.get("pane", "")
             if not focusable(session, pane):
