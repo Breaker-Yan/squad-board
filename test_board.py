@@ -26,7 +26,7 @@ def test_latest_dispatch_wins_and_old_report_is_stale():
         assert task["brief"] == "b.md"
         view = serve.worker_view(dict(name="w1", agent_status="idle"), "W·x", {}, root, "s", task)
         assert view["report"]["stale"]
-        assert serve.needs(dict(workers=[view], missing=[dict(name="gone", role="gone", report="in-progress")], pending=[], issues=[])) == []
+        assert serve.needs(dict(workers=[view], pending=[], issues=[])) == []
 
 
 def test_workers_group_by_tab_then_story_then_session():
@@ -138,18 +138,6 @@ def test_conventional_ac_file_needs_no_config():
         rows = serve.ac_rows(dict(id="TASK-10002", name="TASK-10002", root=root))
         assert [(r["card"], r["ac"], r["status"]) for r in rows] == [("10002", "AC1", "PASS"), ("10002", "AC2", "阻塞"), ("10002", "AC3", "未执行"), ("10002", "AC4", "部分通过")]
         assert serve.ac_rows(dict(id="x", name="x", root=os.path.join(root, "docs", "nope"))) == []
-
-
-def test_only_workers_gone_mid_task_need_attention():
-    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
-        for folder in ("qa", "eng"):
-            os.makedirs(os.path.join(root, folder))
-        open(os.path.join(root, "qa", "REPORT.md"), "w", encoding="utf-8").write("STATUS: in-progress\n")
-        open(os.path.join(root, "eng", "LOG.md"), "w", encoding="utf-8").write("STATUS: done\n")
-        declared = {"planner": {"role": "Planner"}, "qa": {"role": "QA"}, "eng": {"role": "Engineer"}}
-        tasks = {"qa": dict(report="qa/REPORT.md"), "eng": dict(report="eng/LOG.md")}
-        assert [m["name"] for m in serve.interrupted(root, declared, tasks, present=set())] == ["qa"]
-        assert serve.interrupted(root, declared, tasks, present={"qa"}) == []
 
 
 def test_report_follows_newer_status_file_in_same_folder():
@@ -432,7 +420,6 @@ if __name__ == "__main__":
     test_brief_report_pairs_become_dev_progress()
     test_recent_story_without_agents_is_found()
     test_report_follows_newer_status_file_in_same_folder()
-    test_only_workers_gone_mid_task_need_attention()
     test_conventional_ac_file_needs_no_config()
     test_closeout_reads_status_checklist_and_tables()
     test_demos_list_videos_and_tag_by_filename()

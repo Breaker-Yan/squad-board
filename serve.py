@@ -430,16 +430,6 @@ def needs(board):
     return sorted(out, key=lambda n: n["level"] != "fail")
 
 
-def interrupted(root, declared, tasks, present):
-    out = []
-    for name in sorted((set(declared) | set(tasks)) - present):
-        task = tasks.get(name) or {}
-        report = latest_report(root, report_status(root, task["report"])) if task.get("report") and root else None
-        if report and report["state"] != "done":
-            out.append(dict(name=name, role=declared.get(name, {}).get("role", name), report=report["state"], file=report["file"]))
-    return out
-
-
 def board_snapshot(session, board, agents, tabs, exact=None):
     root = board["root"]
     declared = board.get("workers", {})
@@ -447,11 +437,9 @@ def board_snapshot(session, board, agents, tabs, exact=None):
     tasks = load_dispatch(session, board["id"])
     workers = [worker_view(a, tabs.get(a["tab_id"], ""), declared.get(a.get("name"), {}), root, session, tasks.get(a.get("name")))
                for a in mine]
-    present = {w["name"] for w in workers}
     data = dict(id=board["id"], session=session, name=board.get("name", board["id"]), subtitle=board.get("subtitle", ""),
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
                 statuses=board.get("statuses") or DEFAULT_STATUSES, phases=board.get("phases", []), workers=workers,
-                missing=interrupted(root, declared, tasks, present),
                 rows=ac_rows(board), issues=issues(board), pending=pending(board), plans=plans(board), demos=demos(board), closeout=closeout(board),
                 demo_dir=os.path.dirname(as_list(board.get("sources", {}).get("demos") or [""])[0]))
     if not data["cards"] and data["rows"]:
@@ -672,8 +660,6 @@ def diff_board(old, new):
         new_report = (w["report"] or {}).get("state")
         if report and new_report and report != new_report:
             out.append(dict(kind="report", color="blocked" if new_report == "blocked" else "info", worker=w["name"], text=f"{w['role']} 报告：{report} → {new_report}"))
-    gone = {m["name"] for m in new["missing"]} - {m["name"] for m in old["missing"]}
-    out += [dict(kind="worker", color="fail", worker=n, text=f"{n} 从 herdr 消失") for n in sorted(gone)]
     before = keyed(old["rows"], lambda r: (r["card"], r["ac"]), lambda r: r["final"])
     for r in new["rows"]:
         prev = before.get((r["card"], r["ac"]))
