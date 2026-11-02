@@ -153,6 +153,29 @@ def test_report_follows_newer_status_file_in_same_folder():
         assert got["file"] == "G2/REPORT-NEXT.md" and got["state"] == "done" and got["followed"]
 
 
+def test_workers_do_not_follow_each_others_registered_reports():
+    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
+        serve.REGISTRY = root
+        os.makedirs(os.path.join(root, "s"))
+        first, second = (os.path.join(root, name) for name in ("REPORT.md", "REPORT-NEXT.md"))
+        open(first, "w", encoding="utf-8").write("STATUS: in-progress\n")
+        open(second, "w", encoding="utf-8").write("STATUS: done\n")
+        unrelated = os.path.join(root, "OTHER-REPORT.md")
+        open(unrelated, "w", encoding="utf-8").write("STATUS: blocked\n")
+        os.utime(unrelated, (4000, 4000))
+        with open(serve.dispatch_path("s", "b"), "w", encoding="utf-8") as fh:
+            for worker, report in (("w1", "REPORT.md"), ("w2", second)):
+                fh.write(json.dumps(dict(worker=worker, report=report, at=0)) + "\n")
+        agents = [dict(name=name, agent_status="working", tab_id="t") for name in ("w1", "w2")]
+        board = dict(id="b", root=root, tabs=["W·B"])
+        for first_time, second_time in ((1000, 2000), (3000, 2000)):
+            os.utime(first, (first_time, first_time))
+            os.utime(second, (second_time, second_time))
+            view = serve.board_snapshot("s", board, agents, {"t": "W·B"})
+            assert [(w["report"]["file"], w["report"]["state"]) for w in view["workers"]] == [
+                ("REPORT.md", "in-progress"), ("REPORT-NEXT.md", "done")]
+
+
 def test_recent_story_without_agents_is_found():
     with tempfile.TemporaryDirectory(dir=serve.HERE) as ws:
         for story in ("TASK-3/docs", "OLD-4/docs", "EMPTY-5"):
@@ -420,6 +443,7 @@ if __name__ == "__main__":
     test_brief_report_pairs_become_dev_progress()
     test_recent_story_without_agents_is_found()
     test_report_follows_newer_status_file_in_same_folder()
+    test_workers_do_not_follow_each_others_registered_reports()
     test_conventional_ac_file_needs_no_config()
     test_closeout_reads_status_checklist_and_tables()
     test_demos_list_videos_and_tag_by_filename()

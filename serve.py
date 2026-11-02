@@ -388,21 +388,24 @@ def load_dispatch(session, board_id):
     return latest
 
 
-def latest_report(root, report):
+def latest_report(root, report, registered_reports=()):
     if not report:
         return report
     folder = os.path.dirname(os.path.join(root, report["file"]))
+    prefix = os.path.splitext(os.path.basename(report["file"]))[0] + "-"
     newer = sorted((f for f in glob.glob(os.path.join(folder, "*.md")) if os.path.getmtime(f) > report["mtime"]), key=os.path.getmtime, reverse=True)
     for path in newer:
+        if not os.path.basename(path).startswith(prefix) or os.path.realpath(path) in registered_reports:
+            continue
         found = report_status(root, os.path.relpath(path, root))
         if found:
             return dict(found, followed=True)
     return report
 
 
-def worker_view(agent, tab_label, spec, root, session, task=None):
+def worker_view(agent, tab_label, spec, root, session, task=None, registered_reports=()):
     name = agent.get("name") or ""
-    report = latest_report(root, report_status(root, task["report"])) if task and task.get("report") else None
+    report = latest_report(root, report_status(root, task["report"]), registered_reports) if task and task.get("report") else None
     if report and report["mtime"] < task.get("at", 0):
         report["stale"] = True
     return dict(name=name, role=spec.get("role") or name or "无名 agent", group=spec.get("group"), tab=tab_label,
@@ -435,7 +438,8 @@ def board_snapshot(session, board, agents, tabs, exact=None):
     declared = board.get("workers", {})
     mine = agents if exact else [a for a in agents if claims(tabs.get(a["tab_id"], ""), board.get("tabs", []))]
     tasks = load_dispatch(session, board["id"])
-    workers = [worker_view(a, tabs.get(a["tab_id"], ""), declared.get(a.get("name"), {}), root, session, tasks.get(a.get("name")))
+    registered_reports = {os.path.realpath(os.path.join(root, t["report"])) for t in tasks.values() if t.get("report")}
+    workers = [worker_view(a, tabs.get(a["tab_id"], ""), declared.get(a.get("name"), {}), root, session, tasks.get(a.get("name")), registered_reports)
                for a in mine]
     data = dict(id=board["id"], session=session, name=board.get("name", board["id"]), subtitle=board.get("subtitle", ""),
                 claimed=board.get("tabs", []), tabs=sorted({w["tab"] for w in workers}), cards=board.get("cards", {}),
