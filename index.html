@@ -285,6 +285,99 @@ dialog::backdrop { background: rgba(4, 7, 12, .7); }
 @media (max-width: 900px) { .brow { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 1100px) { .top-row { grid-template-columns: 1fr; } .top-row > .needs { min-height: 0; } }
 @media (max-width: 760px) { .hero-main, .brow { grid-template-columns: 1fr; } .ring { margin: 0 auto; } }
+.home { display: flex; align-items: flex-start; gap: 28px; min-width: 0; }
+.h-side { position: sticky; top: calc(var(--top-h, 64px) + 12px); width: 280px; flex: none; height: calc(100vh - var(--top-h, 64px) - 24px); overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 10px; }
+.h-h2 { font-size: 12.5px; color: var(--muted); font-weight: 600; margin: 6px 8px 8px; letter-spacing: .02em; text-transform: none; }
+.h-h2.gap { margin-top: 18px; }
+.h-lead { display: block; width: 100%; text-align: left; border-left: 2px solid transparent; border-radius: 8px; padding: 8px 10px; cursor: pointer; margin-bottom: 2px; }
+.h-lead:hover, .h-lead.on { background: var(--panel-2); }
+.h-lead.on { border-left-color: var(--accent); }
+.h-l1 { display: flex; align-items: center; gap: 8px; font-weight: 600; min-width: 0; }
+.h-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.h-cnt { margin-left: auto; color: var(--muted); font-weight: 500; font-size: 13px; flex: none; }
+.h-l2 { color: var(--idle); font-size: 12.5px; padding-left: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.h-lq { display: block; width: 100%; text-align: left; background: transparent; border: 0; color: var(--muted); font: inherit; font-size: 13px; padding: 1px 0 1px 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+.h-lq:hover, .h-lq.on { color: var(--ink); }
+.h-lq.gone { color: var(--idle); text-decoration: line-through; }
+.h-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--fail); }
+.h-dot.hollow { background: transparent; border: 1.5px solid var(--muted); }
+.h-dot.none { background: transparent; }
+.h-lead.cleared .h-l1 { color: var(--idle); font-weight: 500; }
+.h-others summary { cursor: pointer; color: var(--muted); font-size: 12.5px; font-weight: 600; margin: 18px 8px 6px; list-style: none; }
+.h-others summary::-webkit-details-marker { display: none; }
+.h-others summary::before { content: "▸ "; }
+.h-others[open] summary::before { content: "▾ "; }
+.h-other { display: flex; align-items: center; width: 100%; gap: 8px; background: transparent; border: 0; border-radius: 6px; padding: 4px 10px 4px 25px; cursor: pointer; color: var(--muted); font: inherit; font-size: 13.5px; text-align: left; }
+.h-other:hover, .h-other.on { background: var(--panel-2); color: var(--ink); }
+.h-stg { margin-left: auto; color: var(--idle); font-size: 12.5px; white-space: nowrap; }
+.h-subbtn { font-size: 13px; white-space: nowrap; }
+.h-none { color: var(--idle); font-size: 13px; padding: 2px 10px 6px; }
+.h-chip-other { display: none; }
+.h-main { flex: 1; min-width: 0; max-width: 820px; padding: 14px 0 40px; display: grid; gap: 0; align-content: start; }
+.h-notice { color: var(--muted); font-size: 13.5px; margin-bottom: 14px; }
+.h-link { font: inherit; background: none; border: 0; padding: 0; color: var(--accent); cursor: pointer; text-decoration: none; }
+.h-link.mute { color: var(--muted); }
+.h-link:hover { text-decoration: underline; }
+.h-lhead h1 { font-size: 19px; margin: 0; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.h-lhead h1 a { text-decoration: none; }
+.h-lhead h1 a:hover { color: var(--accent); }
+.h-lt { color: var(--muted); font-weight: 400; font-size: 15px; }
+.h-hacts { margin-left: auto; display: flex; gap: 14px; align-items: center; font-size: 13.5px; font-weight: 400; }
+.h-lctx { color: var(--muted); font-size: 13.5px; margin: 4px 0 0; }
+.h-lhead { margin-bottom: 14px; }
+.h-faint { color: var(--idle); }
+.h-bulk { color: var(--muted); font-size: 13.5px; margin: 0 0 6px; }
+.h-list { border-top: 1px solid var(--line); }
+.h-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 16px; padding: 14px 10px; border-bottom: 1px solid var(--line); border-radius: 6px; scroll-margin: calc(var(--top-h, 64px) + 20px); }
+.h-row.cur { background: var(--panel-2); }
+.h-row.flash { animation: hflash 1.2s ease-out; }
+@keyframes hflash { 0% { background: #24304a; } 100% { background: var(--panel-2); } }
+.h-ask { font-weight: 600; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.h-ask.h-light, .h-row.h-light .h-ask { font-weight: 400; color: var(--muted); }
+.h-meta { color: var(--muted); font-weight: 400; }
+.h-sugg { color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+.h-acts { display: flex; gap: 14px; align-items: center; white-space: nowrap; align-self: center; }
+.h-primary { font: inherit; background: var(--accent); color: #0c1222; border: 0; border-radius: 7px; padding: 5px 14px; font-weight: 600; cursor: pointer; }
+.h-row.done { opacity: .6; }
+.h-state { color: var(--pass); font-size: 14px; }
+.h-state.wait { color: var(--muted); }
+.h-err, .h-errtext { color: var(--fail); font-size: 13.5px; }
+.h-err { margin-top: 4px; }
+.h-more { grid-column: 1 / 3; margin-top: 8px; min-width: 0; }
+.h-ctx { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.h-q { margin: 10px 0 4px; }
+.h-opt { display: block; width: 100%; text-align: left; font: inherit; color: var(--ink); background: transparent; border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
+.h-opt:hover { background: var(--panel-2); }
+.h-opt.on { background: #1b2333; outline: 1px solid var(--accent); }
+.h-e { display: block; color: var(--muted); font-size: 13px; }
+.h-s { color: var(--accent); font-size: 12.5px; margin-left: 6px; }
+.h-minor { display: flex; gap: 14px; font-size: 13px; margin: 4px 8px 0; }
+.h-more textarea { width: 100%; font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; resize: vertical; min-height: 38px; margin-top: 6px; }
+.h-more textarea:focus { outline: none; border-color: var(--accent); }
+.h-mfoot { display: flex; gap: 14px; align-items: center; margin-top: 10px; font-size: 13px; }
+.h-empty { padding: 22px 10px; color: var(--muted); }
+.h-empty b { color: var(--pass); font-weight: 600; }
+.h-events, .h-status { color: var(--muted); font-size: 13.5px; padding: 0 10px; }
+.h-events div, .h-status div { padding: 3px 0; }
+.h-status b { color: var(--ink); font-weight: 500; }
+.h-hint { margin: 26px 0 14px; color: var(--idle); font-size: 12.5px; }
+.h-help { color: var(--muted); font-size: 13px; margin: 0 0 14px; line-height: 1.9; }
+@media (max-width: 900px) {
+  .home { display: block; }
+  .h-side { position: sticky; top: var(--top-h, 64px); z-index: 4; width: auto; height: auto; margin: 0 -16px; border-radius: 0; border-width: 0 0 1px; padding: 8px 16px;
+    display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; }
+  .h-side .h-h2, .h-side .h-l2, .h-side .h-lq, .h-side .h-none, .h-side .h-others { display: none; }
+  .h-lead { width: auto; flex: none; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; margin: 0; }
+  .h-lead.on { border-color: var(--accent); }
+  .h-l1 { font-weight: 500; }
+  .h-cnt { margin-left: 6px; }
+  .h-chip-other { display: inline-flex; flex: none; align-items: center; font: inherit; border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: transparent; cursor: pointer; color: var(--muted); }
+  .h-main { padding-top: 16px; }
+  .h-row { grid-template-columns: minmax(0, 1fr); }
+  .h-acts { align-self: start; margin-top: 4px; }
+  .h-more { grid-column: 1; }
+}
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
@@ -401,7 +494,19 @@ document.addEventListener("click", async e => {
 });
 const KIND_LABEL = { choice: "选择框", approval: "权限确认", question: "在问你", report: "说完了" };
 const SELECT_CHROME = /^(Type something|Chat about this)/;
+function inboxCard(d) {
+  const state = d.stuck ? `答案没投递成功${d.stuck_reason ? `：${esc(d.stuck_reason)}` : ""}` : "";
+  return `<li class="decision inbox" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
+    <div class="dhead">${taskTag(d)}<b>${esc(d.title)}</b><span class="chip mono">${esc(d.inbox_id)}</span>
+      <span class="pill" style="color:var(--warn)">${d.stuck ? "答案没送到" : "收件箱"}</span>${d.blocking ? `<span class="pill" style="color:var(--fail)">阻塞</span>` : ""}
+      <span class="s mono">${d.done_at ? `${esc(d.done_at)} 起在等` : "在等你"}</span></div>
+    ${state ? `<div class="recap">${state}</div>` : ""}
+    <div class="pre dq">${esc(d.question)}</div>
+    <div class="dacts"><a class="chip accept" href="${esc(d.url)}" target="_blank" rel="noopener">${d.stuck ? "去重新通知 ↗" : "去回答 ↗"}</a>
+      ${d.pane ? focusBtn(d.session, d.pane, d.title) : ""}</div></li>`;
+}
 function decisionCard(d) {
+  if (d.kind === "inbox") return inboxCard(d);
   const key = `${d.session}|${d.pane}`;
   return `<li class="decision" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
     <div class="dhead">${taskTag(d)}<b>${esc(d.title)}</b><span class="chip mono">${esc(d.session)}</span>
@@ -433,7 +538,6 @@ function decisionsBlock(decisions) {
   const group = (level, title) => { const list = decisions.filter(d => d.level === level); return list.length ? `<h3 class="dgroup">${title} · ${list.length}</h3><ul class="decisions">${list.map(decisionCard).join("")}</ul>` : ""; };
   return decisions.length ? group("decide", "🔴 需要你决定") + group("stopped", "🟡 停下等你") : `<div class="empty">现在没有在等你的会话。</div>`;
 }
-const waitingTitle = decisions => decisions.length ? ` · ${decisions.length} 个会话在等你` : "";
 const openReplies = new Set(), replyDrafts = new Map();
 document.addEventListener("keydown", e => {
   if (e.key !== "Enter" || !e.target.classList?.contains("reply-text") || e.isComposing || e.keyCode === 229 || e.shiftKey) return;
@@ -484,15 +588,13 @@ function needsList(items, board, withBoardTag) {
       <span class="where mono">${esc([n.tab ? mainline(b, n.tab) : "", n.worker].filter(Boolean).join(" › "))}</span></a>${n.pane && !b.archived ? focusBtn(b.session, n.pane, n.worker || "无名 agent") : ""}</li>`; }).join("")}</ul>`
     : `<div class="empty">现在没有需要你处理的事。</div>`;
 }
-const boardRank = b => b.offline ? 4 : (b.needs || []).length ? 0 : (b.workers || []).some(w => w.status === "working") ? 1 : (b.workers || []).length ? 2 : 3;
 
 function loadSet(key) { try { return new Set(JSON.parse(localStorage.getItem(key) || "[]")); } catch { return new Set(); } }
 function saveSet(key, set) { try { localStorage.setItem(key, JSON.stringify([...set])); } catch {} if (key === SUB_KEY) shareSubscriptions(); }
 function shareSubscriptions() { fetch("/api/subscriptions", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ keys: [...subs] }) }).catch(() => {}); }
-const SUB_KEY = "squad-board.subscribed", SEEN_KEY = "squad-board.seen";
-const subs = loadSet(SUB_KEY), seen = loadSet(SEEN_KEY), firstVisit = !seen.size;
+const SUB_KEY = "squad-board.subscribed";
+const subs = loadSet(SUB_KEY);
 if (subs.size) shareSubscriptions();
-let catalogOpen = null;
 const wildcard = session => `${session}/*`;
 const isSubscribed = b => subs.has(boardKey(b)) || subs.has(wildcard(b.session));
 const isDecisionSubscribed = d => !d.background && (subs.has(wildcard(d.session)) || subs.has(`${d.session}/${d.board}`));
@@ -516,52 +618,384 @@ function archiveList() {
 let archivesOpen = false;
 document.addEventListener("toggle", e => { if (e.target.classList?.contains("archives")) archivesOpen = e.target.open; }, true);
 
+const RECOMMENDED = /\s*(\(Recommended\)|（推荐）|\(推荐\))\s*/;
+const DECIDE_KINDS = new Set(["inbox", "choice", "approval"]);
+const home = { sel: null, cur: null, order: [], known: new Set(), cleared: [], lingering: new Set(), notice: "", expanded: new Set(), drafts: new Map(), slots: new Map(),
+  errors: new Map(), status: new Map(), acked: new Set(), inbox: new Map(), flash: null, help: false, othersOpen: false, unsubOpen: false, hash: "", undoSubs: null, leadCache: new Map() };
+const leadKeyOf = d => `${d.session}|${d.pane}`;
+const itemOf = d => d.inbox_id || d.kind;
+const uidOf = d => `${leadKeyOf(d)}|${itemOf(d)}|${String(d.question || "").slice(0, 80)}`;
+const cleanAsk = text => String(text || "").replace(/^[│\s]+/, "").trim();
+function waitedMinutes(at) {
+  const m = String(at || "").match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i); if (!m) return null;
+  let h = Number(m[1]) % (m[3] ? 12 : 24); if (m[3]?.toUpperCase() === "PM") h += 12;
+  const now = new Date(), then = new Date(now); then.setHours(h, Number(m[2]), 0, 0);
+  if (then > now) then.setDate(then.getDate() - 1);
+  return Math.floor((now - then) / 60000);
+}
+const waitedText = mins => mins == null ? "" : mins < 1 ? "刚刚" : mins < 60 ? `${mins} 分钟` : mins < 1440 ? `${Math.floor(mins / 60)} 小时` : `${Math.floor(mins / 1440)} 天`;
+const recommendedIndex = d => (d.options || []).findIndex(o => RECOMMENDED.test(o));
+const optionLabel = o => o.replace(RECOMMENDED, " ").trim();
+const typeSomethingIndex = d => (d.options || []).findIndex(o => /^Type something/.test(o));
+const inboxLiveQs = detail => (detail?.questions || []).filter(q => !q.withdrawn);
+const inboxAdoptable = d => { const x = home.inbox.get(d.inbox_id); return !!x?.questions && inboxLiveQs(x).every(q => q.suggestion); };
+function suggestionOf(d) {
+  if (d.kind === "choice") { const i = recommendedIndex(d); return i < 0 ? "" : optionLabel(d.options[i]); }
+  if (d.kind === "question") return d.suggestion || "";
+  if (d.kind === "inbox") { const x = home.inbox.get(d.inbox_id); return x?.questions ? inboxLiveQs(x).map(q => `${q.q} ${q.suggestion.split(/\s*——\s*/)[0]}`).join(" · ") : ""; }
+  return "";
+}
+const adoptable = d => d.kind === "inbox" ? inboxAdoptable(d) : !!suggestionOf(d);
+const kindRank = d => DECIDE_KINDS.has(d.kind) ? 0 : d.kind === "question" ? 1 : 2;
+const boardOf = d => allBoards().find(b => b.session === d.session && b.id === d.board && !b.offline);
+const stageOf = b => { const ps = phasesOf(b); return (ps.find(p => p.state === "now") || [...ps].reverse().find(p => p.state === "done"))?.label || ""; };
+const running = b => (b?.workers || []).filter(w => w.status === "working").length;
+const lastEvent = b => { const e = (b?.events || [])[0]; return e ? `${ago(e.ts) || e.at} · ${e.text}` : ""; };
+
+function homeLeads() {
+  const leads = new Map();
+  for (const d of (STATE.decisions || []).filter(d => !d.background && !home.acked.has(uidOf(d)))) {
+    const key = leadKeyOf(d);
+    if (!leads.has(key)) leads.set(key, { key, session: d.session, pane: d.pane, live: [], board: null });
+    const lead = leads.get(key); lead.live.push(d);
+    lead.board ||= boardOf(d);
+    if (d.kind !== "inbox") lead.title = d.title;
+    lead.taskName ||= d.board_name || d.story || "";
+    lead.tab ||= d.tab;
+  }
+  for (const lead of leads.values()) {
+    lead.task = lead.board?.name || lead.taskName || lead.tab || lead.session;
+    lead.title ||= lead.tab || lead.pane;
+    lead.subscribed = lead.live.some(isDecisionSubscribed);
+    home.leadCache.set(lead.key, { ...lead, live: [] });
+  }
+  const liveUids = new Set([...leads.values()].flatMap(l => l.live.map(uidOf)));
+  for (const [uid, st] of home.status) {
+    if (st.state !== "done") continue;
+    if (!liveUids.has(uid)) st.gone = true;
+    else if (st.gone) home.status.delete(uid);
+  }
+  for (const [uid, st] of home.status) {
+    const key = leadKeyOf(st.d);
+    if (!leads.has(key) && (home.lingering.has(key) || home.sel === `L:${key}`)) leads.set(key, { ...home.leadCache.get(key), live: [] });
+    if (leads.has(key) && !leads.get(key).live.some(d => uidOf(d) === uid)) leads.get(key).ghosts = [...(leads.get(key).ghosts || []), st.d];
+  }
+  for (const lead of leads.values()) {
+    lead.items = [...lead.live, ...(lead.ghosts || [])];
+    lead.open = lead.live.filter(d => !home.status.has(uidOf(d)));
+    lead.sending = lead.items.some(d => home.status.get(uidOf(d))?.state === "sending");
+    lead.rank = lead.open.length ? Math.min(...lead.open.map(kindRank)) : 3;
+    lead.waited = Math.max(-1, ...lead.open.map(d => waitedMinutes(d.done_at) ?? -1));
+  }
+  return leads;
+}
+const leadOrder = (a, b) => a.rank - b.rank || b.waited - a.waited;
+function syncOrder(leads) {
+  const waiting = [...leads.values()].filter(l => l.subscribed && (l.open.length || l.sending || home.lingering.has(l.key)));
+  const openUids = waiting.flatMap(l => l.open.map(uidOf));
+  if (openUids.some(u => !home.known.has(u)) || waiting.some(l => !home.order.includes(l.key))) {
+    home.order = waiting.sort(leadOrder).map(l => l.key);
+    home.cleared = home.cleared.filter(k => !home.order.includes(k));
+  } else home.order = home.order.filter(k => waiting.some(l => l.key === k));
+  openUids.forEach(u => home.known.add(u));
+}
+
+function homeRowMore(d, uid) {
+  if (!home.expanded.has(uid) && !(d.kind === "choice" && recommendedIndex(d) < 0)) return "";
+  const draft = esc(home.drafts.get(uid) || ""), area = (placeholder, key = uid) => `<textarea class="reply-text home-text" rows="1" data-hkey="${esc(key)}" placeholder="${placeholder}">${key === uid ? draft : esc(home.slots.get(uid)?.[key.split("#")[1]]?.text || "")}</textarea>`;
+  if (d.kind === "inbox") {
+    const x = home.inbox.get(d.inbox_id);
+    if (!x?.questions) return `<div class="h-more"><p class="h-ctx">${x?.error ? esc(x.error) : "正在读取题目…"}</p></div>`;
+    const slots = home.slots.get(uid) || {}, text = html => esc(new DOMParser().parseFromString(html || "", "text/html").body.textContent.trim());
+    return `<div class="h-more">${x.background_html ? `<p class="h-ctx">${text(x.background_html)}</p>` : ""}${x.evidence_html ? `<p class="h-ctx h-faint">证据：${text(x.evidence_html)}</p>` : ""}
+      ${inboxLiveQs(x).map(q => { const s = slots[q.q], mark = (q.suggestion.match(/^\s*([A-Za-z0-9]+)/) || [])[1];
+        return `<div class="h-q"><div>${esc(q.q)}. ${esc(q.text)}</div>${q.suggestion ? `<div class="h-sugg">建议：${esc(q.suggestion)}</div>` : ""}
+          ${q.options.map(o => `<button type="button" class="h-opt ${s?.type === "option" && s.choice === o ? "on" : ""}" data-h="qopt" data-q="${esc(q.q)}" data-o="${esc(o)}">${esc(o)}${mark && o.startsWith(mark) ? `<span class="h-s">建议</span>` : ""}</button>`).join("")}
+          <div class="h-minor">${[["free", "自由回答"], ["need_context", "要更多上下文"], ["defer", "暂不决定"]].map(([t, l]) => `<button type="button" class="h-link ${s?.type === t ? "" : "mute"}" data-h="qalt" data-q="${esc(q.q)}" data-t="${t}">${l}${s?.type === t ? " ✓" : ""}</button>`).join("")}</div>
+          ${s && s.type !== "option" ? area(s.type === "free" ? "你的回答" : "补充说明（可空）", `${uid}#${q.q}`) : ""}</div>`; }).join("")}
+      <div class="h-mfoot"><button type="button" class="h-primary" data-h="qsubmit">提交</button><span class="h-faint">没选的问题按建议</span><button type="button" class="h-link mute" data-h="toggle">取消</button></div></div>`;
+  }
+  if (d.kind === "choice") { const t = typeSomethingIndex(d);
+    return `<div class="h-more">${d.options.map((o, i) => SELECT_CHROME.test(o) ? "" : `<button type="button" class="h-opt" data-h="pick" data-n="${i + 1}">${esc(optionLabel(o))}${RECOMMENDED.test(o) ? `<span class="h-s">建议</span>` : ""}${(d.details || [])[i] ? `<span class="h-e">${esc(d.details[i])}</span>` : ""}</button>`).join("")}
+      ${t >= 0 ? area("都不合适？自己写 · 回车提交，Option+回车换行") : ""}</div>`; }
+  if (d.kind === "approval") return `<div class="h-more">${d.options.map((o, i) => i === 0 || SELECT_CHROME.test(o) ? "" : `<button type="button" class="h-opt" data-h="pick" data-n="${i + 1}">${esc(o)}${(d.details || [])[i] ? `<span class="h-e">${esc(d.details[i])}</span>` : ""}</button>`).join("")}</div>`;
+  return `<div class="h-more">${d.kind === "report" ? `<p class="h-ctx">${esc(d.question)}</p>` : d.recap && d.recap !== d.question ? `<p class="h-ctx">${esc(d.recap)}</p>` : ""}
+    ${(d.options || []).map(o => `<button type="button" class="h-opt" data-h="fill" data-o="${esc(o)}">${esc(o)}<span class="h-e">填进回复框</span></button>`).join("")}
+    ${area("写给 lead 的回复 · 回车发送，Option+回车换行")}</div>`;
+}
+function homeRow(d) {
+  const uid = uidOf(d), st = home.status.get(uid), base = `data-uid="${esc(uid)}" id="row-${esc(uid)}"`;
+  const ask = d.kind === "inbox" ? d.title : d.kind === "report" ? (d.recap || d.question) : cleanAsk(d.question);
+  if (st) return `<div class="h-row done" ${base}><div><div class="h-ask h-light">${esc(ask)}</div><div class="h-state ${st.state === "done" ? "" : "wait"}">${esc(st.msg)}</div></div><div></div></div>`;
+  const c = `${home.cur === uid ? "cur" : ""} ${home.flash === uid ? "flash" : ""}`, err = home.errors.get(uid) ? `<div class="h-err">${esc(home.errors.get(uid))}</div>` : "";
+  const open = home.expanded.has(uid);
+  if (d.kind === "report") return `<div class="h-row h-light ${c}" ${base}><div><div class="h-ask">${esc(ask)}</div>${err}</div>
+    <div class="h-acts"><button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : "回复…"}</button><button type="button" class="h-link" data-h="ack">知道了</button></div>${homeRowMore(d, uid)}</div>`;
+  const sugg = suggestionOf(d), inboxX = d.kind === "inbox" ? home.inbox.get(d.inbox_id) : null;
+  const second = d.kind === "approval" ? (d.recap ? `<div class="h-sugg">${esc(d.recap)}</div>` : "")
+    : d.kind === "inbox" ? `<div class="h-sugg">${d.stuck ? `答案没投递成功${d.stuck_reason ? `：${esc(d.stuck_reason)}` : ""} · <a class="h-link" href="${esc(d.url)}" target="_blank" rel="noopener">去收件箱重新通知 ↗</a>`
+      : inboxX?.error ? `<span class="h-errtext">${esc(inboxX.error)}</span>` : !inboxX ? "正在读取建议…" : sugg && inboxAdoptable(d) ? `建议：${esc(sugg)}` : "有问题没有建议，点「换个答案」逐条选"}</div>`
+    : sugg ? `<div class="h-sugg">建议：${esc(sugg)}</div>` : d.kind === "choice" ? `<div class="h-sugg">没有标推荐项，直接选一个</div>` : "";
+  const acts = d.kind === "approval"
+    ? `<button type="button" class="h-primary" data-h="allow">允许</button><button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : "拒绝 / 其他…"}</button>`
+    : d.kind === "choice" && recommendedIndex(d) < 0 ? ""
+    : `${adoptable(d) ? `<button type="button" class="h-primary" data-h="adopt">按建议</button>` : ""}<button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : d.kind === "question" ? "回复…" : "换个答案"}</button>`;
+  const meta = d.kind === "inbox" ? ` <span class="h-meta">（${(d.question.match(/^Q\d+/gm) || []).length || 1} 个问题${d.blocking ? " · 阻塞" : ""}）</span>` : d.kind === "approval" ? ` <span class="h-meta">（权限确认）</span>` : "";
+  return `<div class="h-row ${c}" ${base}><div><div class="h-ask">${esc(ask)}${meta}</div>${second}${err}</div>
+    <div class="h-acts">${acts}</div>${homeRowMore(d, uid)}</div>`;
+}
+
+function homeSide(leads, subscribedBoards, unsubscribed) {
+  const waiting = home.order.map(k => leads.get(k)).filter(Boolean), total = waiting.reduce((n, l) => n + l.open.length, 0);
+  const block = l => { const decide = l.open.some(d => DECIDE_KINDS.has(d.kind));
+    return `<div class="h-lead ${home.sel === `L:${l.key}` ? "on" : ""}" data-h="lead" data-lead="${esc(l.key)}" role="button" tabindex="0">
+      <div class="h-l1"><i class="h-dot ${decide ? "" : "hollow"}"></i><span class="h-name">${esc(l.task)}</span><span class="h-cnt">${l.open.length}</span></div>
+      <div class="h-l2">${esc(l.title)}${l.waited >= 0 ? ` · 等了 ${waitedText(l.waited)}` : ""}</div>
+      ${l.items.map(d => { const uid = uidOf(d), gone = home.status.has(uid); return `<button type="button" class="h-lq ${gone ? "gone" : home.cur === uid && home.sel === `L:${l.key}` ? "on" : ""}" data-h="q" data-lead="${esc(l.key)}" data-uid="${esc(uid)}">· ${esc(d.kind === "report" ? "lead 说完了" : d.kind === "inbox" ? d.title : cleanAsk(d.question))}</button>`; }).join("")}</div>`; };
+  const others = subscribedBoards.filter(b => !waiting.some(l => l.board === b));
+  const unsubWaiting = unsubscribed.filter(u => u.leads.some(l => l.open.length)).length;
+  return `<h2 class="h-h2">在等你${waiting.length ? ` · ${waiting.length} 个 lead · ${total} 件` : ""}</h2>
+    ${waiting.length ? waiting.map(block).join("") : `<div class="h-none">都处理完了 ✓</div>`}
+    ${home.cleared.length ? `<h2 class="h-h2 gap">刚处理完 · ${home.cleared.length}</h2>${home.cleared.map(k => `<div class="h-lead cleared ${home.sel === `L:${k}` ? "on" : ""}" data-h="lead" data-lead="${esc(k)}" role="button" tabindex="0"><div class="h-l1"><i class="h-dot none"></i><span class="h-name">${esc(home.leadCache.get(k)?.task || k)}</span><span class="h-cnt">✓</span></div></div>`).join("")}` : ""}
+    <details class="h-others" data-fold="othersOpen" ${home.othersOpen ? "open" : ""}><summary>其他任务 · ${others.length}</summary>
+      ${others.map(b => `<button type="button" class="h-other ${home.sel === `B:${boardKey(b)}` ? "on" : ""}" data-h="board" data-board="${esc(boardKey(b))}"><span class="h-name">${esc(b.name)}</span><span class="h-stg">${esc(stageOf(b))}</span></button>`).join("")}</details>
+    <details class="h-others" data-fold="unsubOpen" ${home.unsubOpen ? "open" : ""}><summary>未订阅 · ${unsubscribed.length}${unsubWaiting ? `（其中 ${unsubWaiting} 个在等）` : ""}</summary>
+      ${unsubscribed.map(u => { const n = u.leads.reduce((s, l) => s + l.open.length, 0), on = u.leads.some(l => home.sel === `L:${l.key}`) || (u.board && home.sel === `B:${boardKey(u.board)}`);
+        return `<div class="h-other ${on ? "on" : ""}" data-h="unsubtask" data-sub-key="${esc(u.key)}" role="button" tabindex="0"><span class="h-name">${esc(u.name)}</span><span class="h-stg">${n ? `在等 ${n} 件` : esc(u.board ? stageOf(u.board) : "")}</span><button type="button" class="h-link h-subbtn" data-h="sub" data-sub-key="${esc(u.key)}">${u.board ? "订阅" : "订阅整个 session"}</button></div>`; }).join("")}
+      <div class="h-none" style="padding-left:25px">只有已订阅的任务会发通知</div></details>
+    <button type="button" class="h-chip-other" data-h="otherchip">其他 ${others.length}</button>`;
+}
+function homeHead(task, title, board, subscribed, subKey, lead) {
+  const stage = board ? stageOf(board) : "", parts = [stage, board ? `${running(board)} 个 worker 在跑` : "", lastEvent(board)].filter(Boolean);
+  return `<div class="h-lhead"><h1>${board ? `<a href="${boardHref(board)}" title="打开看板详情">${esc(task)}</a>` : esc(task)}${title ? `<span class="h-lt">${esc(title)}</span>` : ""}
+      <span class="h-hacts">${subscribed ? `<button type="button" class="h-link mute" data-h="unsub" data-sub-key="${esc(subKey)}">取消订阅</button>` : `<button type="button" class="h-link" data-h="sub" data-sub-key="${esc(subKey)}">${subKey.endsWith("/*") ? "订阅整个 session" : "订阅"}</button>`}
+      ${lead?.pane ? focusBtn(lead.session, lead.pane, lead.title) : ""}</span></h1>
+    ${subscribed ? "" : `<div class="h-lctx h-faint">未订阅：不会通知你，也不算进「在等你」。</div>`}
+    ${parts.length ? `<div class="h-lctx">${esc(parts.join(" · "))}</div>` : ""}</div>`;
+}
+function homeMain(leads, subscribedBoards) {
+  const notice = home.notice ? `<div class="h-notice">${home.notice}</div>` : "";
+  const total = home.order.reduce((n, k) => n + (leads.get(k)?.open.length || 0), 0);
+  const elsewhere = total ? ` 别处还有 ${total} 件 · <button type="button" class="h-link" data-h="nextlead">去处理</button>` : "";
+  const status = b => `<div><b>${esc(b.name)}</b>${[stageOf(b), `${running(b)} 在跑`, lastEvent(b)].filter(Boolean).map(t => ` · ${esc(t)}`).join("")}</div>`;
+  if (home.sel?.startsWith("B:")) {
+    const b = allBoards().find(x => `B:${boardKey(x)}` === home.sel);
+    if (b) return `${notice}${homeHead(b.name, b.subtitle, b, isSubscribed(b), boardKey(b))}<div class="h-list"></div><div class="h-empty">这个任务没有在等你的事。${elsewhere}</div>
+      <div class="h-events">${(b.events || []).slice(0, 3).map(e => `<div>${esc(e.at)} ${esc(e.text)}</div>`).join("") || "<div>还没有动态</div>"}</div>`;
+  }
+  const lead = home.sel?.startsWith("L:") && leads.get(home.sel.slice(2));
+  if (!lead) return `${notice}<div class="h-empty"><b>✓ 没有在等你的事了。</b> 新的会出现在左边，并发通知。</div>
+    <div class="h-status">${subscribedBoards.slice(0, 8).map(status).join("")}${subscribedBoards.length > 8 ? `<div>其余任务在左栏「其他任务」里</div>` : ""}</div>`;
+  const subKey = lead.board ? boardKey(lead.board) : wildcard(lead.session), withSugg = lead.open.filter(adoptable);
+  return `${notice}${homeHead(lead.task, lead.title, lead.board, lead.subscribed, subKey, lead)}
+    ${withSugg.length >= 2 ? `<p class="h-bulk">${withSugg.length} 件都有建议 · <button type="button" class="h-link" data-h="bulk">这个 lead 全部按建议</button></p>` : ""}
+    <div class="h-list">${lead.items.map(homeRow).join("")}</div>
+    ${lead.open.length || lead.sending ? "" : `<div class="h-empty"><b>✓ 这个 lead 都处理完了。</b>${elsewhere}</div>`}`;
+}
+
+let homeModel = null;
 function renderOverview() {
   document.getElementById("title").textContent = "Squad 看板";
-  const sessions = STATE.sessions, boards = allBoards(), mine = boards.filter(isSubscribed), others = boards.filter(b => !isSubscribed(b));
-  const myDecisions = (STATE.decisions || []).filter(isDecisionSubscribed);
-  const fresh = new Set(firstVisit ? [] : boards.map(boardKey).filter(k => !seen.has(k)));
-  boards.forEach(b => seen.add(boardKey(b))); saveSet(SEEN_KEY, seen);
-  put(document.getElementById("crumb")).innerHTML = `订阅 ${mine.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
-  const waitingOn = b => myDecisions.filter(d => d.session === b.session && d.board === b.id).length;
-  const reminders = b => (b.needs || []).length ? ` · <span class="muted">${b.needs.length} 条提醒</span>` : "";
-  const subBtn = (attr, key, text) => `<button type="button" class="chip sub" ${attr}="${esc(key)}">${text}</button>`;
-  const row = b => {
-    const off = subBtn("data-unsub", boardKey(b), "取消订阅");
-    if (b.offline) return `<div class="bwrap"><div class="brow compact offline"><div><div class="name">${esc(b.name)}</div><div class="sub">session 未运行</div></div></div>${off}</div>`;
-    const ws = b.workers || [], share = doneShare(b), rows = counted(b), last = (b.events || [])[0];
-    const lines = [...new Set((b.tabs.length ? b.tabs : b.claimed).map(t => mainline(b, t)))];
-    const autoTag = b.auto ? ` <span class="chip" title="${esc(b.subtitle)}">未登记</span>` : "";
-    if (!ws.length && share === null) return `<div class="bwrap"><a class="brow compact" href="${boardHref(b)}">
-      <div><div class="name">${esc(b.name)}${autoTag}</div><div class="sub">${esc(b.subtitle)}</div></div>
-      <div class="sub">认领 ${b.claimed.map(t => `<span class="chip mono">${esc(t)}</span>`).join(" ")} · 还没有 worker</div></a>${off}</div>`;
-    return `<div class="bwrap"><a class="brow ${waitingOn(b) ? "attn" : ""}" href="${boardHref(b)}">
-      <div><div class="name">${esc(b.name)}${autoTag}</div><div class="sub">${esc(b.subtitle)}</div>
-        <div class="tabs">${lines.map(t => `<span class="chip mono">${esc(t)}</span>`).join("")}</div></div>
-      <div><div class="tally">${tally(ws)}</div><div class="counts mono">${ws.length} worker${waitingOn(b) ? ` · <span style="color:var(--fail)">${waitingOn(b)} 个在等你</span>` : ""}${reminders(b)}</div></div>
-      <div>${share === null ? `<div class="sub">${Object.keys(b.cards || {}).length ? `${Object.keys(b.cards).length} 张卡 · 未配置 AC 数据源` : "未配置 AC 数据源"}</div>`
-        : `<div class="bar">${barHtml(b, rows)}</div><div class="counts mono">${(r => `${r.pct} ${r.label}${r.note ? ` · ${r.note.split(" · ")[0]}` : ""}`)(ringStats(b))} · ${Object.keys(b.cards || {}).length} 张卡 · ${rows.length} 条 AC</div>`}
-        ${b.auto ? "" : `<div class="counts mono">缺陷未关 ${openIssues(b)} · 待确认 ${(b.pending || []).length}${implTotals(b).total ? ` · 实现 ${implTotals(b).done}/${implTotals(b).total} Task` : ""}${(b.demos || []).length ? ` · ▶ ${b.demos.length} 演示` : ""}${b.closeout?.state === "done" ? " · ✅ 已收尾" : ""}</div>`}</div>
-      <div class="last">${last ? `<span class="mono">${esc(ago(last.ts) || last.at)}</span> · ${esc(last.text)}` : "还没有动态"}</div></a>${off}</div>`;
-  };
-  const mySessions = sessions.map(s => ({ s, bs: s.boards.filter(isSubscribed) })).filter(x => x.bs.length);
-  const catalogSessions = sessions.map(s => ({ s, bs: s.boards.filter(b => !isSubscribed(b)) })).filter(x => x.bs.length);
-  const open = catalogOpen ?? (!mine.length || fresh.size > 0);
-  const catalog = catalogSessions.length ? `<details class="panel catalog" id="catalog" ${open ? "open" : ""}>
-      <summary><h2 style="display:inline">可订阅 · ${others.length} 个看板</h2>${fresh.size ? ` <span class="chip new">${fresh.size} 个新出现</span>` : ""}</summary>
-      ${catalogSessions.map(({ s, bs }) => `<div class="cat-session"><div class="session-head"><b>${esc(s.name)}</b>${subBtn("data-sub", wildcard(s.name), "订阅整个 session（含以后的新看板）")}</div>
-        <div class="cat-list">${bs.map(b => `<div class="cat-item"><span class="name">${esc(b.name)}</span>${b.auto ? ` <span class="chip">未登记</span>` : ""}${fresh.has(boardKey(b)) ? ` <span class="chip new">新</span>` : ""}
-          <span class="sub">${b.offline ? "session 未运行" : `${(b.workers || []).length} worker`}${reminders(b)}</span>${subBtn("data-sub", boardKey(b), "订阅")}</div>`).join("")}</div></div>`).join("")}
-    </details>` : "";
-  put(document.getElementById("app")).innerHTML = mine.length ? `
-    <div class="top-row"><section class="panel needs" aria-labelledby="h-needs"><h2 id="h-needs">需要你${waitingTitle(myDecisions)}</h2>${decisionsBlock(myDecisions)}</section><div class="panel rail-box" id="rail-slot"></div></div>
-    ${mySessions.map(({ s, bs }) => `<section class="session" aria-label="session ${esc(s.name)}">
-      <div class="session-head"><h2 style="margin:0">session</h2><b>${esc(s.name)}</b><span class="muted" style="font-size:12px">${subs.has(wildcard(s.name)) ? "整个 session 已订阅（含新看板）" : `订阅了 ${bs.length} / ${s.boards.length} 个看板`}</span>
-        ${subs.has(wildcard(s.name)) ? subBtn("data-unsub-session", s.name, "取消订阅 session") : ""}</div>
-      ${[...bs].sort((a, b) => boardRank(a) - boardRank(b)).map(row).join("")}</section>`).join("")}
-    ${catalog}${archiveList()}` : `<section class="panel"><h2>还没有订阅任何看板</h2><div class="muted">在下面选择要看的看板，或者订阅整个 session。只有订阅的看板会出现在总览和「需要你」里。</div></section>${catalog}${archiveList()}`;
-  document.getElementById("catalog")?.addEventListener("toggle", e => { catalogOpen = e.target.open; });
+  const sessions = STATE.sessions, boards = allBoards().filter(b => !b.offline);
+  const leads = homeLeads(); syncOrder(leads);
+  const subscribedBoards = boards.filter(isSubscribed);
+  const unsubscribed = [...boards.filter(b => !isSubscribed(b)).map(b => ({ key: boardKey(b), name: b.name, board: b, leads: [...leads.values()].filter(l => l.board === b) })),
+    ...[...new Set([...leads.values()].filter(l => !l.subscribed && !l.board).map(l => l.session))].map(s => ({ key: wildcard(s), name: `${s} · 未归属`, board: null, leads: [...leads.values()].filter(l => !l.subscribed && !l.board && l.session === s) }))];
+  homeModel = { leads, unsubscribed };
+  applyNeedsHash(leads);
+  if (!home.sel || (home.sel.startsWith("L:") && !leads.has(home.sel.slice(2)))) { home.sel = home.order[0] ? `L:${home.order[0]}` : null; home.cur = null; }
+  const sel = home.sel?.startsWith("L:") && leads.get(home.sel.slice(2));
+  if (sel && !sel.open.some(d => uidOf(d) === home.cur)) home.cur = sel.open[0] ? uidOf(sel.open[0]) : null;
+  const total = home.order.reduce((n, k) => n + (leads.get(k)?.open.length || 0), 0);
+  document.title = `${total ? `(${total}) ` : ""}Squad 看板`;
+  document.documentElement.style.setProperty("--top-h", `${document.querySelector(".top").offsetHeight}px`);
+  put(document.getElementById("crumb")).innerHTML = `订阅 ${subscribedBoards.length} / 共 ${boards.length} 个看板 · ${sessions.length} 个 herdr session`;
+  const active = document.activeElement, hkey = active?.dataset?.hkey, pos = active?.selectionStart, sideBox = document.getElementById("h-side"), sideScroll = sideBox?.scrollTop || 0;
+  put(document.getElementById("app")).innerHTML = `<div class="home"><aside class="h-side" id="h-side" aria-label="在等你的 lead">${homeSide(leads, subscribedBoards, unsubscribed)}</aside>
+    <section class="h-main" aria-live="polite">${homeMain(leads, subscribedBoards)}
+      <div class="h-hint">回车 = 按建议 · ↓↑ 换一条 · ] [ 换 lead · Y 允许 · <button type="button" class="h-link mute" data-h="help">? 全部键位</button></div>
+      ${home.help ? `<div class="h-help">↓ ↑ 或 J K：当前 lead 里换一条<br>] [ 或 ⌥↓ ⌥↑：换到下一个 / 上一个有待办的 lead<br>回车：按建议（权限框不响应回车：Y 允许 / N 展开其他选项）<br>E：换个答案 / 回复…，Esc：收起<br>输入框里：回车发送，Option+回车换行</div>` : ""}
+      ${archiveList()}</section></div>`;
+  const newSide = document.getElementById("h-side"); if (newSide) newSide.scrollTop = sideScroll;
+  if (hkey && document.activeElement !== active) { const t = document.querySelector(`[data-hkey="${CSS.escape(hkey)}"]`); if (t) { t.focus(); try { t.setSelectionRange(pos, pos); } catch {} } }
+  for (const d of sel ? sel.live : []) if (d.kind === "inbox" && !home.inbox.has(d.inbox_id)) loadInbox(d.inbox_id);
 }
+const renderHome = () => { if (!route() && STATE?.sessions) renderOverview(); };
+function loadInbox(id) {
+  home.inbox.set(id, { loading: true });
+  fetch(`/api/inbox/${encodeURIComponent(id)}`).then(r => r.json().then(j => r.ok ? j : { error: j.error || `收件箱返回 ${r.status}` }))
+    .catch(() => ({ error: "连不上看板服务" })).then(x => { home.inbox.set(id, x); renderHome(); });
+}
+function applyNeedsHash(leads) {
+  const m = location.hash.match(/^#\/needs\/([^/?]+)\/([^?]+)(?:\?item=(.+))?$/);
+  if (!m || location.hash === home.hash) return;
+  home.hash = location.hash;
+  history.replaceState(null, "", "#/");
+  const key = `${decodeURIComponent(m[1])}|${decodeURIComponent(m[2])}`, item = m[3] ? decodeURIComponent(m[3]) : "", lead = leads.get(key);
+  if (!lead) { home.notice = "这条已经处理过了，这个 lead 现在没有在等你的事。"; return; }
+  home.sel = `L:${key}`; home.notice = "";
+  const hit = item && lead.open.find(d => itemOf(d) === item);
+  if (item && !hit) home.notice = "这条已经处理过了。";
+  home.cur = hit ? uidOf(hit) : lead.open[0] ? uidOf(lead.open[0]) : null;
+  if (hit) flashRow(home.cur);
+}
+function flashRow(uid) {
+  home.flash = uid;
+  setTimeout(() => { document.getElementById(`row-${uid}`)?.scrollIntoView({ block: "center", behavior: "smooth" }); }, 0);
+  setTimeout(() => { if (home.flash === uid) { home.flash = null; renderHome(); } }, 1300);
+}
+function selectLead(key, uid) {
+  home.sel = `L:${key}`; home.notice = ""; home.cur = uid || null;
+  renderOverview();
+  if (uid) { flashRow(uid); renderOverview(); } else scrollTo(0, 0);
+}
+function stepLead(dir) {
+  const w = home.order; if (!w.length) return;
+  const i = w.indexOf(home.sel?.slice(2));
+  selectLead(w[(i + dir + w.length) % w.length]);
+}
+function nextWaiting(from) {
+  const w = home.order.filter(k => k !== from && homeModel.leads.get(k)?.open.length), i = home.order.indexOf(from);
+  return w.find(k => home.order.indexOf(k) > i) || w[0] || null;
+}
+function afterLeadChange(d) {
+  const key = leadKeyOf(d);
+  home.lingering.add(key); renderOverview();
+  const lead = homeModel.leads.get(key);
+  if (lead && (lead.open.length || lead.sending)) return;
+  setTimeout(() => {
+    const now = homeModel.leads.get(key);
+    if (now && (now.open.length || now.sending)) return;
+    home.lingering.delete(key);
+    if (home.leadCache.get(key)?.subscribed && !home.cleared.includes(key)) home.cleared.unshift(key);
+    home.order = home.order.filter(k => k !== key);
+    if (home.sel !== `L:${key}`) return renderOverview();
+    const next = nextWaiting(key), name = esc(home.leadCache.get(key)?.task || "这个 lead");
+    home.sel = next ? `L:${next}` : null; home.cur = null;
+    home.notice = next ? `${name} 都处理完了，已切到 ${esc(homeModel.leads.get(next)?.task || "")} · <button type="button" class="h-link" data-h="lead" data-lead="${esc(key)}">回去看</button>` : `${name} 都处理完了。`;
+    renderOverview(); scrollTo(0, 0);
+  }, 1000);
+}
+async function homeSend(d, url, body, doneMsg) {
+  const uid = uidOf(d);
+  home.errors.delete(uid); home.expanded.delete(uid);
+  home.status.set(uid, { state: "sending", msg: "提交中…", d });
+  if (home.cur === uid) home.cur = null;
+  renderOverview();
+  let ok = false, message = "";
+  try {
+    const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    ok = res.ok; message = data.message || data.error || (ok ? "" : `提交失败（${res.status}）`);
+    if (ok && data.answer_rev != null) doneMsg = `${doneMsg} · Rev ${data.answer_rev}，正在发回 lead`;
+    if (!ok && res.status === 409 && d.kind === "inbox") loadInbox(d.inbox_id);
+  } catch { message = "没提交：连不上看板服务。点按钮重试。"; }
+  if (!ok) { home.status.delete(uid); home.errors.set(uid, message); home.cur = uid; return renderOverview(); }
+  home.status.set(uid, { state: "done", msg: `✓ ${doneMsg}`, d });
+  home.drafts.delete(uid); home.slots.delete(uid);
+  afterLeadChange(d);
+}
+const choose = (d, number, text = "") => homeSend(d, "/api/choose", { session: d.session, pane: d.pane, number, option: d.options[number - 1], text },
+  text ? `已填「${text.slice(0, 30)}」· lead 继续工作` : d.kind === "approval" && number === 1 ? "已允许这一次 · lead 继续工作" : `已选「${optionLabel(d.options[number - 1]).slice(0, 40)}」· lead 继续工作`);
+const reply = (d, text) => homeSend(d, "/api/reply", { session: d.session, pane: d.pane, text }, `已回复：${text.slice(0, 40)}`);
+function submitInbox(d, slots) {
+  const x = home.inbox.get(d.inbox_id);
+  if (!x?.questions) return;
+  homeSend(d, `/api/inbox/${encodeURIComponent(d.inbox_id)}/submit`, { content_rev: x.content_rev, answer_rev: x.answer_rev, slots },
+    Object.keys(slots).length ? "已提交" : "已按建议提交");
+}
+function adopt(d) {
+  if (!adoptable(d)) return;
+  if (d.kind === "inbox") return submitInbox(d, {});
+  if (d.kind === "choice") return choose(d, recommendedIndex(d) + 1);
+  if (d.kind === "question") return reply(d, d.suggestion);
+}
+function ack(d) { home.acked.add(uidOf(d)); home.status.set(uidOf(d), { state: "done", msg: "已读（只在本页隐藏）", d }); afterLeadChange(d); }
+function submitText(d, uid) {
+  const text = (home.drafts.get(uid) || "").trim(); if (!text) return;
+  if (d.kind === "choice") return choose(d, typeSomethingIndex(d) + 1, text);
+  return reply(d, text);
+}
+const homeItem = uid => { for (const l of homeModel?.leads.values() || []) { const d = l.items.find(x => uidOf(x) === uid); if (d) return d; } return null; };
+const isOpenItem = d => d && !home.status.has(uidOf(d));
+function toggleRow(d) {
+  const uid = uidOf(d);
+  home.expanded.has(uid) ? home.expanded.delete(uid) : home.expanded.add(uid);
+  home.cur = uid; renderOverview();
+  if (home.expanded.has(uid)) document.querySelector(`[data-hkey="${CSS.escape(uid)}"]`)?.focus();
+}
+function setSubs(change, notice) {
+  home.undoSubs = [...subs]; change(); saveSet(SUB_KEY, subs); home.notice = notice; renderOverview();
+}
+document.addEventListener("click", e => {
+  if (route() || !homeModel) return;
+  const b = e.target.closest("[data-h]"), row = e.target.closest(".h-row[data-uid]"), d = row && homeItem(row.dataset.uid);
+  if (isOpenItem(d) && home.cur !== row.dataset.uid) { home.cur = row.dataset.uid; if (!b) return renderOverview(); }
+  if (!b) return;
+  const act = b.dataset.h;
+  if (act === "lead") return selectLead(b.dataset.lead);
+  if (act === "q") { e.stopPropagation(); return selectLead(b.dataset.lead, homeItem(b.dataset.uid) && isOpenItem(homeItem(b.dataset.uid)) ? b.dataset.uid : null); }
+  if (act === "board") { home.sel = `B:${b.dataset.board}`; home.notice = ""; return renderOverview(); }
+  if (act === "unsubtask") { const u = homeModel.unsubscribed.find(x => x.key === b.dataset.subKey); if (!u) return;
+    const l = u.leads.find(x => x.open.length) || u.leads[0];
+    if (l) return selectLead(l.key);
+    home.sel = `B:${u.key}`; home.notice = ""; return renderOverview(); }
+  if (act === "sub") { e.stopPropagation(); const key = b.dataset.subKey, name = homeModel.unsubscribed.find(x => x.key === key)?.name || key;
+    return setSubs(() => subs.add(key), `已订阅 ${esc(name)}，以后它的待办会通知你。`); }
+  if (act === "unsub") { const key = b.dataset.subKey, board = allBoards().find(x => boardKey(x) === key);
+    return setSubs(() => { if (board) unsubscribe(board); else { const s = key.slice(0, -2); subs.delete(key); allBoards().filter(x => x.session === s).forEach(x => subs.add(boardKey(x))); } },
+      `已取消订阅 ${esc(board?.name || key)} · <button type="button" class="h-link" data-h="undosub">撤销</button>`); }
+  if (act === "undosub") { if (home.undoSubs) { subs.clear(); home.undoSubs.forEach(k => subs.add(k)); saveSet(SUB_KEY, subs); } home.undoSubs = null; home.notice = "已撤销取消订阅。"; return renderOverview(); }
+  if (act === "otherchip") { home.othersOpen = true; const first = allBoards().find(x => !x.offline && isSubscribed(x)); if (first) home.sel = `B:${boardKey(first)}`; return renderOverview(); }
+  if (act === "help") { home.help = !home.help; return renderOverview(); }
+  if (act === "nextlead") { const n = nextWaiting(home.sel?.slice(2)) || home.order[0]; return n && selectLead(n); }
+  if (act === "bulk") { const lead = homeModel.leads.get(home.sel?.slice(2)); (async () => { for (const x of lead.open.filter(adoptable)) { await adopt(x); } })(); return; }
+  if (!isOpenItem(d)) return;
+  const uid = uidOf(d);
+  if (act === "toggle") return toggleRow(d);
+  if (act === "adopt") return adopt(d);
+  if (act === "allow") return choose(d, 1);
+  if (act === "pick") return choose(d, Number(b.dataset.n));
+  if (act === "ack") return ack(d);
+  if (act === "fill") { home.drafts.set(uid, b.dataset.o); renderOverview(); return document.querySelector(`[data-hkey="${CSS.escape(uid)}"]`)?.focus(); }
+  if (act === "qopt") { home.slots.set(uid, { ...(home.slots.get(uid) || {}), [b.dataset.q]: { type: "option", choice: b.dataset.o } }); return renderOverview(); }
+  if (act === "qalt") { home.slots.set(uid, { ...(home.slots.get(uid) || {}), [b.dataset.q]: { type: b.dataset.t, text: "" } }); renderOverview(); return document.querySelector(`[data-hkey="${CSS.escape(`${uid}#${b.dataset.q}`)}"]`)?.focus(); }
+  if (act === "qsubmit") { const slots = Object.fromEntries(Object.entries(home.slots.get(uid) || {}).filter(([, s]) => s.type !== "free" || s.text.trim())); return submitInbox(d, slots); }
+});
+document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (k) home[k] = e.target.open; }, true);
+document.addEventListener("input", e => {
+  const key = e.target.dataset?.hkey; if (!key) return;
+  const [uid, q] = key.split("#");
+  if (q) { const s = home.slots.get(uid)?.[q]; if (s) s.text = e.target.value; } else home.drafts.set(uid, e.target.value);
+});
+document.addEventListener("keydown", e => {
+  if (route() || !homeModel || document.getElementById("dlg").open) return;
+  const t = e.target;
+  if (t.dataset?.hkey) {
+    if (e.key === "Escape") { t.blur(); return; }
+    if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.shiftKey || e.altKey) return;
+    e.preventDefault();
+    const [uid, q] = t.dataset.hkey.split("#"), d = homeItem(uid);
+    if (q || !isOpenItem(d)) return;
+    t.blur(); return submitText(d, uid);
+  }
+  if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || e.metaKey || e.ctrlKey) return;
+  if (e.altKey) { if (e.key === "ArrowDown") { e.preventDefault(); stepLead(1); } if (e.key === "ArrowUp") { e.preventDefault(); stepLead(-1); } return; }
+  if (e.key === "]") return stepLead(1);
+  if (e.key === "[") return stepLead(-1);
+  if (e.key === "?") { home.help = !home.help; return renderOverview(); }
+  if (e.key === "Enter" && t.dataset?.h === "lead") { e.preventDefault(); return selectLead(t.dataset.lead); }
+  const lead = homeModel.leads.get(home.sel?.slice(2)), list = lead ? lead.open : [], i = list.findIndex(x => uidOf(x) === home.cur), d = list[i];
+  if (e.key === "ArrowDown" || e.key === "j") { e.preventDefault(); if (list.length) { home.cur = uidOf(list[(i + 1) % list.length]); renderOverview(); } return; }
+  if (e.key === "ArrowUp" || e.key === "k") { e.preventDefault(); if (list.length) { home.cur = uidOf(list[(i - 1 + list.length) % list.length]); renderOverview(); } return; }
+  if (!d) return;
+  if (e.key === "Escape") { home.expanded.delete(uidOf(d)); return renderOverview(); }
+  if (e.key === "Enter") { if (["BUTTON", "A", "SUMMARY"].includes(t.tagName)) return; e.preventDefault(); return d.kind === "report" ? ack(d) : d.kind === "approval" ? undefined : adopt(d); }
+  if (d.kind === "approval" && e.key.toLowerCase() === "y") return choose(d, 1);
+  if (d.kind === "approval" && e.key.toLowerCase() === "n") { home.expanded.add(uidOf(d)); return renderOverview(); }
+  if (e.key.toLowerCase() === "e") { e.preventDefault(); return toggleRow(d); }
+});
+addEventListener("resize", () => document.documentElement.style.setProperty("--top-h", `${document.querySelector(".top").offsetHeight}px`));
 function toggleSubscription(b) { isSubscribed(b) ? unsubscribe(b) : subs.add(boardKey(b)); saveSet(SUB_KEY, subs); }
 document.addEventListener("click", e => {
   const sub = e.target.closest("[data-sub]"), unsub = e.target.closest("[data-unsub]"), unsubSession = e.target.closest("[data-unsub-session]"), here = e.target.closest("[data-sub-here]");
