@@ -9,8 +9,6 @@ import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-import urllib.error
-import urllib.request
 from urllib.parse import parse_qs, quote, unquote, urlparse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -564,104 +562,10 @@ def read_screen(session, pane):
     return run(["herdr", "--session", session, "pane", "read", pane, "--source", "visible", "--ansi"], timeout=10)
 
 
-INBOX_URL = os.environ.get("QUESTION_INBOX_URL", "http://127.0.0.1:7788/")
-INBOX_STUCK = ("held", "uncertain")
-
-
-def inbox_dir():
-    return os.environ.get("QUESTION_INBOX_DIR") or os.path.expanduser("~/workspaces/_questions")
-
-
-def read_front_matter(text):
-    if not text.startswith("---\n") or "\n---\n" not in text[4:]:
-        return {}, text
-    head, body = text[4:].split("\n---\n", 1)
-    return {k.strip(): v.strip() for k, v in (line.split(":", 1) for line in head.splitlines() if ":" in line)}, body
-
-
-def inbox_questions():
-    out = []
-    for path in sorted(glob.glob(os.path.join(inbox_dir(), "*.md"))):
-        try:
-            meta, body = read_front_matter(open(path, encoding="utf-8").read())
-        except OSError:
-            continue
-        waiting = meta.get("status") == "open" and not meta.get("superseded_by")
-        stuck = meta.get("status") == "answered" and meta.get("delivery") in INBOX_STUCK
-        if not meta.get("id") or not (waiting or stuck):
-            continue
-        asks = [line.strip() for line in body.split("## 问题", 1)[-1].split("\n## ", 1)[0].splitlines() if re.match(r"\s*Q\d+[.．、]", line)]
-        out.append(dict(kind="inbox", level="decide", key=f"inbox:{meta['id']}", inbox_id=meta["id"], session=meta.get("herdr_session", ""),
-                        pane=meta.get("pane_id", ""), title=meta.get("title") or meta["id"], blocking=meta.get("blocking") == "yes",
-                        stuck=stuck, stuck_reason=meta.get("last_error", "") if stuck else "", question="\n".join(asks) or meta.get("title", ""),
-                        options=[], suggestion="", recap="", done_at=meta.get("created", "")[11:16], url=f"{INBOX_URL}#{meta['id']}"))
-    return out
-
-
-INBOX_ID = re.compile(r"[A-Za-z0-9_.-]+")
-INBOX_SLOT_TYPES = ("option", "free", "suggested", "need_context", "defer")
-
-
-def inbox_token():
-    path = os.environ.get("QUESTION_INBOX_TOKEN_FILE") or os.path.expanduser("~/.local/state/question-inbox/token")
-    try:
-        return open(path, encoding="utf-8").read().strip()
-    except OSError:
-        return ""
-
-
-def inbox_call(qid, payload=None):
-    if not INBOX_ID.fullmatch(qid or ""):
-        return 400, dict(error="收件箱题号不合法")
-    host = urlparse(INBOX_URL).netloc
-    headers = {"Host": host, "Origin": f"http://{host}"}
-    data = None
-    if payload is not None:
-        headers.update({"Content-Type": "application/json", "X-QI-Token": inbox_token()})
-        data = json.dumps(payload, ensure_ascii=False).encode()
-    url = INBOX_URL.rstrip("/") + f"/api/q/{qid}" + ("/submit" if payload is not None else "")
-    try:
-        with urllib.request.urlopen(urllib.request.Request(url, data=data, headers=headers, method="POST" if data else "GET"), timeout=10) as res:
-            return res.status, json.load(res)
-    except urllib.error.HTTPError as error:
-        try:
-            return error.code, json.load(error)
-        except ValueError:
-            return error.code, dict(error=f"收件箱返回 {error.code}")
-    except (OSError, ValueError):
-        return 502, dict(error="连不上收件箱服务（127.0.0.1:7788），没有提交；草稿还在")
-
-
-def inbox_slots(questions, picked):
-    picked = picked if isinstance(picked, dict) else {}
-    out = {}
-    for q in questions:
-        if q.get("withdrawn"):
-            continue
-        slot = picked.get(q["q"])
-        if isinstance(slot, dict) and slot.get("type") in INBOX_SLOT_TYPES:
-            out[q["q"]] = {"type": slot["type"], **{k: slot[k] for k in ("choice", "text") if isinstance(slot.get(k), str) and slot[k]}}
-        elif q.get("suggestion"):
-            out[q["q"]] = {"type": "suggested"}
-    return out
-
-
-def submit_inbox(qid, body):
-    try:
-        content_rev, answer_rev = int(body.get("content_rev")), int(body.get("answer_rev"))
-    except (TypeError, ValueError):
-        return 400, dict(error="缺少 content_rev / answer_rev")
-    code, detail = inbox_call(qid)
-    if code != 200:
-        return code, detail
-    return inbox_call(qid, dict(content_rev=content_rev, answer_rev=answer_rev, slots=inbox_slots(detail.get("questions", []), body.get("slots"))))
-
-
 def needs_link(decision):
     if not board_url:
         return ""
-    item = decision.get("inbox_id") or decision.get("kind", "")
-    return f"{board_url}needs/{quote(decision['session'], safe='')}/{quote(decision['pane'], safe='')}?item={quote(item, safe='')}"
+    return f"{board_url}needs/{quote(decision['session'], safe='')}/{quote(decision['pane'], safe='')}?item={quote(decision.get('kind', ''), safe='')}"
 
 
 def lead_decisions(session, agents, tabs, workspaces):
@@ -698,7 +602,6 @@ def board_of_decision(decision, boards, stories, view_ids, workspaces, lead_coun
 def snapshot():
     sessions = []
     decisions = []
-    inbox = inbox_questions()
     registered = load_boards()
     workspaces = load_config().get("workspaces", [])
     shown = set()
@@ -712,13 +615,7 @@ def snapshot():
         agents, tabs = layout
         layouts[session] = [a["name"] for a in agents if a.get("name")]
         owned, by_story, loose = assign_workers(boards, agents, tabs, workspaces)
-        asked = [q for q in inbox if q["session"] == session]
-        asking_panes = {q["pane"] for q in asked}
-        waiting = [d for d in lead_decisions(session, agents, tabs, workspaces) if d["pane"] not in asking_panes or d["level"] == "decide"]
-        for question in asked:
-            lead = next((a for a in agents if a["pane_id"] == question["pane"]), {})
-            story = story_of(agent_dir(lead), workspaces) if lead else ""
-            waiting.append(dict(question, tab=tabs.get(lead.get("tab_id"), ""), story=os.path.basename(story) if story else ""))
+        waiting = lead_decisions(session, agents, tabs, workspaces)
         leads = [a for a in agents if not a.get("name") and not tabs.get(a["tab_id"], "").startswith("W·")]
         if loose and len(by_story) == 1 and len(leads) == 1:
             next(iter(by_story.values())).extend(loose)
@@ -745,8 +642,6 @@ def snapshot():
         decisions += waiting
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
-    seen_sessions = {s["name"] for s in sessions if s.get("alive")}
-    decisions += [dict(q, board="", board_name="", tab="", story="") for q in inbox if q["session"] not in seen_sessions]
     idle = recent_stories(workspaces, shown)
     if idle:
         sessions.append(dict(name="工作区（无 herdr 会话）", alive=True,
@@ -882,17 +777,15 @@ def subscribed(decision, keys):
 
 
 def notices(decisions, before, keys):
-    key = lambda d: (d["session"], d.get("key") or d["pane"])
-    current = {key(d): (d["level"], d.get("done_at"), (("!" if d.get("stuck") else "") + d["question"])[:80])
+    current = {(d["session"], d["pane"]): (d["level"], d.get("done_at"), d["question"][:80])
                for d in decisions if not d.get("background") and subscribed(d, keys)}
-    fresh = [d for d in decisions if before is not None and current.get(key(d)) not in (None, before.get(key(d)))]
+    fresh = [d for d in decisions if before is not None and current.get((d["session"], d["pane"])) not in (None, before.get((d["session"], d["pane"])))]
     return current, fresh
 
 
 def notify(decision):
     task = decision.get("board_name") or decision.get("story") or decision["session"]
-    said = f"答案没投递成功：{decision.get('stuck_reason') or '原因未知'}，去收件箱点重新通知" if decision.get("stuck") \
-        else decision["question"] if decision["level"] == "decide" else decision.get("recap") or decision["question"]
+    said = decision["question"] if decision["level"] == "decide" else decision.get("recap") or decision["question"]
     title, message = f"{LEVEL_NOTICE[decision['level']]} · {decision['title']}", " ".join(said.split())[:160]
     notifier = shutil.which("terminal-notifier") or next((p for p in ("/opt/homebrew/bin/terminal-notifier", "/usr/local/bin/terminal-notifier") if os.path.exists(p)), None)
     if notifier:
@@ -952,7 +845,7 @@ def focusable(session, pane):
 
 
 def awaiting(session, pane):
-    return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane and d.get("kind") != "inbox"), None)
+    return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane), None)
 
 
 def send_choice(session, pane, number, option, text=""):
@@ -1169,11 +1062,6 @@ class Handler(BaseHTTPRequestHandler):
             if not issue:
                 return self.send(404, "没有这条缺陷".encode(), "text/plain; charset=utf-8")
             return self.send(200, json.dumps(issue, ensure_ascii=False).encode(), "application/json; charset=utf-8")
-        if path.startswith("/api/inbox/"):
-            if self.client_address[0] not in LOCAL_CLIENTS:
-                return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
-            code, data = inbox_call(path[len("/api/inbox/"):])
-            return self.send(code, json.dumps(data, ensure_ascii=False).encode(), "application/json; charset=utf-8")
         if path == "/api/archive":
             src = archive_dir(parse_qs(urlparse(self.path).query).get("id", [""])[0])
             if not src:
@@ -1183,8 +1071,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         path = urlparse(self.path).path
-        inbox = re.fullmatch(r"/api/inbox/([^/]+)/submit", path)
-        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply", "/api/choose", "/api/subscriptions") and not inbox:
+        if path not in ("/api/focus", "/api/archive", "/api/restore", "/api/reply", "/api/choose", "/api/subscriptions"):
             return self.send(404, b"not found", "text/plain")
         if self.client_address[0] not in LOCAL_CLIENTS:
             return self.send(403, "只能在本机操作".encode(), "text/plain; charset=utf-8")
@@ -1204,8 +1091,6 @@ class Handler(BaseHTTPRequestHandler):
             with open(os.path.join(REGISTRY, "subscriptions.json"), "w", encoding="utf-8") as fh:
                 json.dump(sorted(keys), fh, ensure_ascii=False)
             return reply(200, dict(ok=True))
-        if inbox:
-            return reply(*submit_inbox(inbox.group(1), body))
         if path == "/api/choose":
             code, message = send_choice(body.get("session", ""), body.get("pane", ""), body.get("number"), body.get("option", ""), body.get("text", ""))
             return reply(code, dict(ok=code == 200, message=message))

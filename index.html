@@ -342,20 +342,16 @@ dialog::backdrop { background: rgba(4, 7, 12, .7); }
 .h-row.done { opacity: .6; }
 .h-state { color: var(--pass); font-size: 14px; }
 .h-state.wait { color: var(--muted); }
-.h-err, .h-errtext { color: var(--fail); font-size: 13.5px; }
+.h-err { color: var(--fail); font-size: 13.5px; }
 .h-err { margin-top: 4px; }
 .h-more { grid-column: 1 / 3; margin-top: 8px; min-width: 0; }
 .h-ctx { color: var(--muted); font-size: 13.5px; margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
-.h-q { margin: 10px 0 4px; }
 .h-opt { display: block; width: 100%; text-align: left; font: inherit; color: var(--ink); background: transparent; border: 0; border-radius: 6px; padding: 5px 8px; cursor: pointer; }
 .h-opt:hover { background: var(--panel-2); }
-.h-opt.on { background: #1b2333; outline: 1px solid var(--accent); }
 .h-e { display: block; color: var(--muted); font-size: 13px; }
 .h-s { color: var(--accent); font-size: 12.5px; margin-left: 6px; }
-.h-minor { display: flex; gap: 14px; font-size: 13px; margin: 4px 8px 0; }
 .h-more textarea { width: 100%; font: inherit; color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 7px; padding: 7px 10px; resize: vertical; min-height: 38px; margin-top: 6px; }
 .h-more textarea:focus { outline: none; border-color: var(--accent); }
-.h-mfoot { display: flex; gap: 14px; align-items: center; margin-top: 10px; font-size: 13px; }
 .h-empty { padding: 22px 10px; color: var(--muted); }
 .h-empty b { color: var(--pass); font-weight: 600; }
 .h-events, .h-status { color: var(--muted); font-size: 13.5px; padding: 0 10px; }
@@ -494,19 +490,7 @@ document.addEventListener("click", async e => {
 });
 const KIND_LABEL = { choice: "选择框", approval: "权限确认", question: "在问你", report: "说完了" };
 const SELECT_CHROME = /^(Type something|Chat about this)/;
-function inboxCard(d) {
-  const state = d.stuck ? `答案没投递成功${d.stuck_reason ? `：${esc(d.stuck_reason)}` : ""}` : "";
-  return `<li class="decision inbox" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
-    <div class="dhead">${taskTag(d)}<b>${esc(d.title)}</b><span class="chip mono">${esc(d.inbox_id)}</span>
-      <span class="pill" style="color:var(--warn)">${d.stuck ? "答案没送到" : "收件箱"}</span>${d.blocking ? `<span class="pill" style="color:var(--fail)">阻塞</span>` : ""}
-      <span class="s mono">${d.done_at ? `${esc(d.done_at)} 起在等` : "在等你"}</span></div>
-    ${state ? `<div class="recap">${state}</div>` : ""}
-    <div class="pre dq">${esc(d.question)}</div>
-    <div class="dacts"><a class="chip accept" href="${esc(d.url)}" target="_blank" rel="noopener">${d.stuck ? "去重新通知 ↗" : "去回答 ↗"}</a>
-      ${d.pane ? focusBtn(d.session, d.pane, d.title) : ""}</div></li>`;
-}
 function decisionCard(d) {
-  if (d.kind === "inbox") return inboxCard(d);
   const key = `${d.session}|${d.pane}`;
   return `<li class="decision" data-session="${esc(d.session)}" data-pane="${esc(d.pane)}">
     <div class="dhead">${taskTag(d)}<b>${esc(d.title)}</b><span class="chip mono">${esc(d.session)}</span>
@@ -619,12 +603,11 @@ let archivesOpen = false;
 document.addEventListener("toggle", e => { if (e.target.classList?.contains("archives")) archivesOpen = e.target.open; }, true);
 
 const RECOMMENDED = /\s*(\(Recommended\)|（推荐）|\(推荐\))\s*/;
-const DECIDE_KINDS = new Set(["inbox", "choice", "approval"]);
-const home = { sel: null, cur: null, order: [], known: new Set(), cleared: [], lingering: new Set(), notice: "", expanded: new Set(), drafts: new Map(), slots: new Map(),
-  errors: new Map(), status: new Map(), acked: new Set(), inbox: new Map(), flash: null, help: false, othersOpen: false, unsubOpen: false, hash: "", undoSubs: null, leadCache: new Map() };
+const DECIDE_KINDS = new Set(["choice", "approval"]);
+const home = { sel: null, cur: null, order: [], known: new Set(), cleared: [], lingering: new Set(), notice: "", expanded: new Set(), drafts: new Map(),
+  errors: new Map(), status: new Map(), acked: new Set(), flash: null, help: false, othersOpen: false, unsubOpen: false, hash: "", undoSubs: null, leadCache: new Map() };
 const leadKeyOf = d => `${d.session}|${d.pane}`;
-const itemOf = d => d.inbox_id || d.kind;
-const uidOf = d => `${leadKeyOf(d)}|${itemOf(d)}|${String(d.question || "").slice(0, 80)}`;
+const uidOf = d => `${leadKeyOf(d)}|${d.kind}|${String(d.question || "").slice(0, 80)}`;
 const cleanAsk = text => String(text || "").replace(/^[│\s]+/, "").trim();
 function waitedMinutes(at) {
   const m = String(at || "").match(/^(\d{1,2}):(\d{2})(?:\s*([AP]M))?$/i); if (!m) return null;
@@ -637,15 +620,12 @@ const waitedText = mins => mins == null ? "" : mins < 1 ? "刚刚" : mins < 60 ?
 const recommendedIndex = d => (d.options || []).findIndex(o => RECOMMENDED.test(o));
 const optionLabel = o => o.replace(RECOMMENDED, " ").trim();
 const typeSomethingIndex = d => (d.options || []).findIndex(o => /^Type something/.test(o));
-const inboxLiveQs = detail => (detail?.questions || []).filter(q => !q.withdrawn);
-const inboxAdoptable = d => { const x = home.inbox.get(d.inbox_id); return !!x?.questions && inboxLiveQs(x).every(q => q.suggestion); };
 function suggestionOf(d) {
   if (d.kind === "choice") { const i = recommendedIndex(d); return i < 0 ? "" : optionLabel(d.options[i]); }
   if (d.kind === "question") return d.suggestion || "";
-  if (d.kind === "inbox") { const x = home.inbox.get(d.inbox_id); return x?.questions ? inboxLiveQs(x).map(q => `${q.q} ${q.suggestion.split(/\s*——\s*/)[0]}`).join(" · ") : ""; }
   return "";
 }
-const adoptable = d => d.kind === "inbox" ? inboxAdoptable(d) : !!suggestionOf(d);
+const adoptable = d => !!suggestionOf(d);
 const kindRank = d => DECIDE_KINDS.has(d.kind) ? 0 : d.kind === "question" ? 1 : 2;
 const boardOf = d => allBoards().find(b => b.session === d.session && b.id === d.board && !b.offline);
 const stageOf = b => { const ps = phasesOf(b); return (ps.find(p => p.state === "now") || [...ps].reverse().find(p => p.state === "done"))?.label || ""; };
@@ -659,7 +639,7 @@ function homeLeads() {
     if (!leads.has(key)) leads.set(key, { key, session: d.session, pane: d.pane, live: [], board: null });
     const lead = leads.get(key); lead.live.push(d);
     lead.board ||= boardOf(d);
-    if (d.kind !== "inbox") lead.title = d.title;
+    lead.title = d.title;
     lead.taskName ||= d.board_name || d.story || "";
     lead.tab ||= d.tab;
   }
@@ -702,19 +682,7 @@ function syncOrder(leads) {
 
 function homeRowMore(d, uid) {
   if (!home.expanded.has(uid) && !(d.kind === "choice" && recommendedIndex(d) < 0)) return "";
-  const draft = esc(home.drafts.get(uid) || ""), area = (placeholder, key = uid) => `<textarea class="reply-text home-text" rows="1" data-hkey="${esc(key)}" placeholder="${placeholder}">${key === uid ? draft : esc(home.slots.get(uid)?.[key.split("#")[1]]?.text || "")}</textarea>`;
-  if (d.kind === "inbox") {
-    const x = home.inbox.get(d.inbox_id);
-    if (!x?.questions) return `<div class="h-more"><p class="h-ctx">${x?.error ? esc(x.error) : "正在读取题目…"}</p></div>`;
-    const slots = home.slots.get(uid) || {}, text = html => esc(new DOMParser().parseFromString(html || "", "text/html").body.textContent.trim());
-    return `<div class="h-more">${x.background_html ? `<p class="h-ctx">${text(x.background_html)}</p>` : ""}${x.evidence_html ? `<p class="h-ctx h-faint">证据：${text(x.evidence_html)}</p>` : ""}
-      ${inboxLiveQs(x).map(q => { const s = slots[q.q], mark = (q.suggestion.match(/^\s*([A-Za-z0-9]+)/) || [])[1];
-        return `<div class="h-q"><div>${esc(q.q)}. ${esc(q.text)}</div>${q.suggestion ? `<div class="h-sugg">建议：${esc(q.suggestion)}</div>` : ""}
-          ${q.options.map(o => `<button type="button" class="h-opt ${s?.type === "option" && s.choice === o ? "on" : ""}" data-h="qopt" data-q="${esc(q.q)}" data-o="${esc(o)}">${esc(o)}${mark && o.startsWith(mark) ? `<span class="h-s">建议</span>` : ""}</button>`).join("")}
-          <div class="h-minor">${[["free", "自由回答"], ["need_context", "要更多上下文"], ["defer", "暂不决定"]].map(([t, l]) => `<button type="button" class="h-link ${s?.type === t ? "" : "mute"}" data-h="qalt" data-q="${esc(q.q)}" data-t="${t}">${l}${s?.type === t ? " ✓" : ""}</button>`).join("")}</div>
-          ${s && s.type !== "option" ? area(s.type === "free" ? "你的回答" : "补充说明（可空）", `${uid}#${q.q}`) : ""}</div>`; }).join("")}
-      <div class="h-mfoot"><button type="button" class="h-primary" data-h="qsubmit">提交</button><span class="h-faint">没选的问题按建议</span><button type="button" class="h-link mute" data-h="toggle">取消</button></div></div>`;
-  }
+  const draft = esc(home.drafts.get(uid) || ""), area = placeholder => `<textarea class="reply-text home-text" rows="1" data-hkey="${esc(uid)}" placeholder="${placeholder}">${draft}</textarea>`;
   if (d.kind === "choice") { const t = typeSomethingIndex(d);
     return `<div class="h-more">${d.options.map((o, i) => SELECT_CHROME.test(o) ? "" : `<button type="button" class="h-opt" data-h="pick" data-n="${i + 1}">${esc(optionLabel(o))}${RECOMMENDED.test(o) ? `<span class="h-s">建议</span>` : ""}${(d.details || [])[i] ? `<span class="h-e">${esc(d.details[i])}</span>` : ""}</button>`).join("")}
       ${t >= 0 ? area("都不合适？自己写 · 回车提交，Option+回车换行") : ""}</div>`; }
@@ -725,22 +693,20 @@ function homeRowMore(d, uid) {
 }
 function homeRow(d) {
   const uid = uidOf(d), st = home.status.get(uid), base = `data-uid="${esc(uid)}" id="row-${esc(uid)}"`;
-  const ask = d.kind === "inbox" ? d.title : d.kind === "report" ? (d.recap || d.question) : cleanAsk(d.question);
+  const ask = d.kind === "report" ? (d.recap || d.question) : cleanAsk(d.question);
   if (st) return `<div class="h-row done" ${base}><div><div class="h-ask h-light">${esc(ask)}</div><div class="h-state ${st.state === "done" ? "" : "wait"}">${esc(st.msg)}</div></div><div></div></div>`;
   const c = `${home.cur === uid ? "cur" : ""} ${home.flash === uid ? "flash" : ""}`, err = home.errors.get(uid) ? `<div class="h-err">${esc(home.errors.get(uid))}</div>` : "";
   const open = home.expanded.has(uid);
   if (d.kind === "report") return `<div class="h-row h-light ${c}" ${base}><div><div class="h-ask">${esc(ask)}</div>${err}</div>
     <div class="h-acts"><button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : "回复…"}</button><button type="button" class="h-link" data-h="ack">知道了</button></div>${homeRowMore(d, uid)}</div>`;
-  const sugg = suggestionOf(d), inboxX = d.kind === "inbox" ? home.inbox.get(d.inbox_id) : null;
+  const sugg = suggestionOf(d);
   const second = d.kind === "approval" ? (d.recap ? `<div class="h-sugg">${esc(d.recap)}</div>` : "")
-    : d.kind === "inbox" ? `<div class="h-sugg">${d.stuck ? `答案没投递成功${d.stuck_reason ? `：${esc(d.stuck_reason)}` : ""} · <a class="h-link" href="${esc(d.url)}" target="_blank" rel="noopener">去收件箱重新通知 ↗</a>`
-      : inboxX?.error ? `<span class="h-errtext">${esc(inboxX.error)}</span>` : !inboxX ? "正在读取建议…" : sugg && inboxAdoptable(d) ? `建议：${esc(sugg)}` : "有问题没有建议，点「换个答案」逐条选"}</div>`
     : sugg ? `<div class="h-sugg">建议：${esc(sugg)}</div>` : d.kind === "choice" ? `<div class="h-sugg">没有标推荐项，直接选一个</div>` : "";
   const acts = d.kind === "approval"
     ? `<button type="button" class="h-primary" data-h="allow">允许</button><button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : "拒绝 / 其他…"}</button>`
     : d.kind === "choice" && recommendedIndex(d) < 0 ? ""
     : `${adoptable(d) ? `<button type="button" class="h-primary" data-h="adopt">按建议</button>` : ""}<button type="button" class="h-link mute" data-h="toggle">${open ? "收起" : d.kind === "question" ? "回复…" : "换个答案"}</button>`;
-  const meta = d.kind === "inbox" ? ` <span class="h-meta">（${(d.question.match(/^Q\d+/gm) || []).length || 1} 个问题${d.blocking ? " · 阻塞" : ""}）</span>` : d.kind === "approval" ? ` <span class="h-meta">（权限确认）</span>` : "";
+  const meta = d.kind === "approval" ? ` <span class="h-meta">（权限确认）</span>` : "";
   return `<div class="h-row ${c}" ${base}><div><div class="h-ask">${esc(ask)}${meta}</div>${second}${err}</div>
     <div class="h-acts">${acts}</div>${homeRowMore(d, uid)}</div>`;
 }
@@ -751,7 +717,7 @@ function homeSide(leads, subscribedBoards, unsubscribed) {
     return `<div class="h-lead ${home.sel === `L:${l.key}` ? "on" : ""}" data-h="lead" data-lead="${esc(l.key)}" role="button" tabindex="0">
       <div class="h-l1"><i class="h-dot ${decide ? "" : "hollow"}"></i><span class="h-name">${esc(l.task)}</span><span class="h-cnt">${l.open.length}</span></div>
       <div class="h-l2">${esc(l.title)}${l.waited >= 0 ? ` · 等了 ${waitedText(l.waited)}` : ""}</div>
-      ${l.items.map(d => { const uid = uidOf(d), gone = home.status.has(uid); return `<button type="button" class="h-lq ${gone ? "gone" : home.cur === uid && home.sel === `L:${l.key}` ? "on" : ""}" data-h="q" data-lead="${esc(l.key)}" data-uid="${esc(uid)}">· ${esc(d.kind === "report" ? "lead 说完了" : d.kind === "inbox" ? d.title : cleanAsk(d.question))}</button>`; }).join("")}</div>`; };
+      ${l.items.map(d => { const uid = uidOf(d), gone = home.status.has(uid); return `<button type="button" class="h-lq ${gone ? "gone" : home.cur === uid && home.sel === `L:${l.key}` ? "on" : ""}" data-h="q" data-lead="${esc(l.key)}" data-uid="${esc(uid)}">· ${esc(d.kind === "report" ? "lead 说完了" : cleanAsk(d.question))}</button>`; }).join("")}</div>`; };
   const others = subscribedBoards.filter(b => !waiting.some(l => l.board === b));
   const unsubWaiting = unsubscribed.filter(u => u.leads.some(l => l.open.length)).length;
   return `<h2 class="h-h2">在等你${waiting.length ? ` · ${waiting.length} 个 lead · ${total} 件` : ""}</h2>
@@ -818,14 +784,8 @@ function renderOverview() {
       ${archiveList()}</section></div>`;
   const newSide = document.getElementById("h-side"); if (newSide) newSide.scrollTop = sideScroll;
   if (hkey && document.activeElement !== active) { const t = document.querySelector(`[data-hkey="${CSS.escape(hkey)}"]`); if (t) { t.focus(); try { t.setSelectionRange(pos, pos); } catch {} } }
-  for (const d of sel ? sel.live : []) if (d.kind === "inbox" && !home.inbox.has(d.inbox_id)) loadInbox(d.inbox_id);
 }
 const renderHome = () => { if (!route() && STATE?.sessions) renderOverview(); };
-function loadInbox(id) {
-  home.inbox.set(id, { loading: true });
-  fetch(`/api/inbox/${encodeURIComponent(id)}`).then(r => r.json().then(j => r.ok ? j : { error: j.error || `收件箱返回 ${r.status}` }))
-    .catch(() => ({ error: "连不上看板服务" })).then(x => { home.inbox.set(id, x); renderHome(); });
-}
 function applyNeedsHash(leads) {
   const m = location.hash.match(/^#\/needs\/([^/?]+)\/([^?]+)(?:\?item=(.+))?$/);
   if (!m || location.hash === home.hash) return;
@@ -834,7 +794,7 @@ function applyNeedsHash(leads) {
   const key = `${decodeURIComponent(m[1])}|${decodeURIComponent(m[2])}`, item = m[3] ? decodeURIComponent(m[3]) : "", lead = leads.get(key);
   if (!lead) { home.notice = "这条已经处理过了，这个 lead 现在没有在等你的事。"; return; }
   home.sel = `L:${key}`; home.notice = "";
-  const hit = item && lead.open.find(d => itemOf(d) === item);
+  const hit = item && lead.open.find(d => d.kind === item);
   if (item && !hit) home.notice = "这条已经处理过了。";
   home.cur = hit ? uidOf(hit) : lead.open[0] ? uidOf(lead.open[0]) : null;
   if (hit) flashRow(home.cur);
@@ -886,27 +846,18 @@ async function homeSend(d, url, body, doneMsg) {
   try {
     const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
-    ok = res.ok; message = data.message || data.error || (ok ? "" : `提交失败（${res.status}）`);
-    if (ok && data.answer_rev != null) doneMsg = `${doneMsg} · Rev ${data.answer_rev}，正在发回 lead`;
-    if (!ok && res.status === 409 && d.kind === "inbox") loadInbox(d.inbox_id);
+    ok = res.ok; message = data.message || (ok ? "" : `提交失败（${res.status}）`);
   } catch { message = "没提交：连不上看板服务。点按钮重试。"; }
   if (!ok) { home.status.delete(uid); home.errors.set(uid, message); home.cur = uid; return renderOverview(); }
   home.status.set(uid, { state: "done", msg: `✓ ${doneMsg}`, d });
-  home.drafts.delete(uid); home.slots.delete(uid);
+  home.drafts.delete(uid);
   afterLeadChange(d);
 }
 const choose = (d, number, text = "") => homeSend(d, "/api/choose", { session: d.session, pane: d.pane, number, option: d.options[number - 1], text },
   text ? `已填「${text.slice(0, 30)}」· lead 继续工作` : d.kind === "approval" && number === 1 ? "已允许这一次 · lead 继续工作" : `已选「${optionLabel(d.options[number - 1]).slice(0, 40)}」· lead 继续工作`);
 const reply = (d, text) => homeSend(d, "/api/reply", { session: d.session, pane: d.pane, text }, `已回复：${text.slice(0, 40)}`);
-function submitInbox(d, slots) {
-  const x = home.inbox.get(d.inbox_id);
-  if (!x?.questions) return;
-  homeSend(d, `/api/inbox/${encodeURIComponent(d.inbox_id)}/submit`, { content_rev: x.content_rev, answer_rev: x.answer_rev, slots },
-    Object.keys(slots).length ? "已提交" : "已按建议提交");
-}
 function adopt(d) {
   if (!adoptable(d)) return;
-  if (d.kind === "inbox") return submitInbox(d, {});
   if (d.kind === "choice") return choose(d, recommendedIndex(d) + 1);
   if (d.kind === "question") return reply(d, d.suggestion);
 }
@@ -958,15 +909,11 @@ document.addEventListener("click", e => {
   if (act === "pick") return choose(d, Number(b.dataset.n));
   if (act === "ack") return ack(d);
   if (act === "fill") { home.drafts.set(uid, b.dataset.o); renderOverview(); return document.querySelector(`[data-hkey="${CSS.escape(uid)}"]`)?.focus(); }
-  if (act === "qopt") { home.slots.set(uid, { ...(home.slots.get(uid) || {}), [b.dataset.q]: { type: "option", choice: b.dataset.o } }); return renderOverview(); }
-  if (act === "qalt") { home.slots.set(uid, { ...(home.slots.get(uid) || {}), [b.dataset.q]: { type: b.dataset.t, text: "" } }); renderOverview(); return document.querySelector(`[data-hkey="${CSS.escape(`${uid}#${b.dataset.q}`)}"]`)?.focus(); }
-  if (act === "qsubmit") { const slots = Object.fromEntries(Object.entries(home.slots.get(uid) || {}).filter(([, s]) => s.type !== "free" || s.text.trim())); return submitInbox(d, slots); }
 });
 document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (k) home[k] = e.target.open; }, true);
 document.addEventListener("input", e => {
   const key = e.target.dataset?.hkey; if (!key) return;
-  const [uid, q] = key.split("#");
-  if (q) { const s = home.slots.get(uid)?.[q]; if (s) s.text = e.target.value; } else home.drafts.set(uid, e.target.value);
+  home.drafts.set(key, e.target.value);
 });
 document.addEventListener("keydown", e => {
   if (route() || !homeModel || document.getElementById("dlg").open) return;
@@ -975,8 +922,8 @@ document.addEventListener("keydown", e => {
     if (e.key === "Escape") { t.blur(); return; }
     if (e.key !== "Enter" || e.isComposing || e.keyCode === 229 || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    const [uid, q] = t.dataset.hkey.split("#"), d = homeItem(uid);
-    if (q || !isOpenItem(d)) return;
+    const uid = t.dataset.hkey, d = homeItem(uid);
+    if (!isOpenItem(d)) return;
     t.blur(); return submitText(d, uid);
   }
   if (["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName) || e.metaKey || e.ctrlKey) return;

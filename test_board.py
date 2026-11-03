@@ -435,93 +435,10 @@ def test_notified_waits_survive_a_restart():
         assert serve.notices([ask], restored, None)[1] == []
         assert serve.notices([dict(ask, question="Deploy?")], restored, None)[1] != []
 
-def test_inbox_lists_open_and_undelivered_questions_only():
-    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
-        os.environ["QUESTION_INBOX_DIR"] = root
-        body = "\n## 问题\nQ1. Retry on failure?\nQ2. How many times?\n\n## 背景\nQ9. not a question line\n"
-        def write(qid, **meta):
-            head = "\n".join(f"{k}: {v}" for k, v in dict(id=qid, title=f"t-{qid}", herdr_session="s", pane_id="w1:p1", created="2026-11-03 10:20:00", **meta).items())
-            open(os.path.join(root, f"{qid}.md"), "w", encoding="utf-8").write(f"---\n{head}\n---\n{body}")
-        write("ws-0001", status="open", blocking="yes")
-        write("ws-0002", status="answered", delivery="held", last_error="lead busy")
-        write("ws-0003", status="answered", delivery="sent")
-        write("ws-0004", status="withdrawn")
-        write("ws-0005", status="open", superseded_by="ws-0006")
-        found = {q["inbox_id"]: q for q in serve.inbox_questions()}
-        assert sorted(found) == ["ws-0001", "ws-0002"]
-        assert found["ws-0001"]["question"] == "Q1. Retry on failure?\nQ2. How many times?" and found["ws-0001"]["blocking"]
-        assert found["ws-0001"]["url"].endswith("#ws-0001") and found["ws-0001"]["done_at"] == "10:20"
-        assert found["ws-0002"]["stuck"] and found["ws-0002"]["stuck_reason"] == "lead busy"
-        del os.environ["QUESTION_INBOX_DIR"]
-
-def test_inbox_slots_fill_suggested_only_where_a_suggestion_exists():
-    qs = [dict(q="Q1", suggestion="A"), dict(q="Q2", suggestion=""), dict(q="Q3", suggestion="B", withdrawn=True), dict(q="Q4", suggestion="C")]
-    assert serve.inbox_slots(qs, {}) == {"Q1": {"type": "suggested"}, "Q4": {"type": "suggested"}}
-    picked = {"Q1": {"type": "option", "choice": "B. 24h", "evil": 1}, "Q2": {"type": "free", "text": "my own"},
-              "Q3": {"type": "defer"}, "Q4": {"type": "withdrawn"}, "Q9": {"type": "option", "choice": "x"}}
-    assert serve.inbox_slots(qs, picked) == {"Q1": {"type": "option", "choice": "B. 24h"}, "Q2": {"type": "free", "text": "my own"}, "Q4": {"type": "suggested"}}
-    assert serve.inbox_slots(qs, {"Q2": {"type": "need_context", "text": ""}})["Q2"] == {"type": "need_context"}
-
-
-def test_inbox_proxy_sends_token_and_same_origin_headers_and_reports_unreachable():
-    import threading
-    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-    seen = []
-
-    class Fake(BaseHTTPRequestHandler):
-        def log_message(self, *args):
-            pass
-
-        def reply(self, code, data):
-            body = json.dumps(data).encode()
-            self.send_response(code)
-            self.send_header("Content-Type", "application/json")
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_GET(self):
-            seen.append(("GET", self.path, self.headers, None))
-            self.reply(200, dict(id="ws-0001", content_rev=3, answer_rev=0, questions=[dict(q="Q1", suggestion="A"), dict(q="Q2", suggestion="B")]))
-
-        def do_POST(self):
-            body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
-            seen.append(("POST", self.path, self.headers, body))
-            self.reply(409 if body["content_rev"] != 3 else 200, dict(error="stale") if body["content_rev"] != 3 else dict(ok=True, answer_rev=1))
-
-    fake = ThreadingHTTPServer(("127.0.0.1", 0), Fake)
-    threading.Thread(target=fake.serve_forever, daemon=True).start()
-    host = f"127.0.0.1:{fake.server_address[1]}"
-    with tempfile.TemporaryDirectory(dir=serve.HERE) as root:
-        token = os.path.join(root, "token")
-        open(token, "w").write("sekret\n")
-        os.environ["QUESTION_INBOX_TOKEN_FILE"] = token
-        serve.INBOX_URL = f"http://{host}/"
-        try:
-            assert serve.inbox_call("../etc")[0] == 400
-            code, data = serve.submit_inbox("ws-0001", dict(content_rev=3, answer_rev=0, slots={"Q2": {"type": "option", "choice": "A. x"}}))
-            assert (code, data) == (200, dict(ok=True, answer_rev=1))
-            method, path, headers, body = seen[-1]
-            assert (method, path) == ("POST", "/api/q/ws-0001/submit")
-            assert headers["Host"] == host and headers["Origin"] == f"http://{host}" and headers["X-QI-Token"] == "sekret"
-            assert headers["Content-Type"] == "application/json"
-            assert body == dict(content_rev=3, answer_rev=0, slots={"Q1": {"type": "suggested"}, "Q2": {"type": "option", "choice": "A. x"}})
-            assert seen[0][2].get("X-QI-Token") is None
-            assert serve.submit_inbox("ws-0001", dict(content_rev=2, answer_rev=0))[0] == 409
-            assert serve.submit_inbox("ws-0001", dict(content_rev="x"))[0] == 400
-            fake.shutdown()
-            fake.server_close()
-            code, data = serve.inbox_call("ws-0001")
-            assert code == 502 and "连不上" in data["error"]
-        finally:
-            del os.environ["QUESTION_INBOX_TOKEN_FILE"]
-            serve.INBOX_URL = "http://127.0.0.1:7788/"
-
-
 def test_notification_opens_the_lead_on_the_board_home():
     serve.board_url = "http://127.0.0.1:8790/#/"
     try:
         assert serve.needs_link(dict(session="my s", pane="w1:p1", kind="choice")) == "http://127.0.0.1:8790/#/needs/my%20s/w1%3Ap1?item=choice"
-        assert serve.needs_link(dict(session="s", pane="w1:p9", kind="inbox", inbox_id="ws-0001")).endswith("/w1%3Ap9?item=ws-0001")
     finally:
         serve.board_url = ""
 
@@ -565,9 +482,6 @@ if __name__ == "__main__":
     test_notices_fire_once_per_new_wait_and_skip_background_or_unsubscribed()
     test_choice_options_keep_their_descriptions()
     test_notified_waits_survive_a_restart()
-    test_inbox_lists_open_and_undelivered_questions_only()
-    test_inbox_slots_fill_suggested_only_where_a_suggestion_exists()
-    test_inbox_proxy_sends_token_and_same_origin_headers_and_reports_unreachable()
     test_notification_opens_the_lead_on_the_board_home()
     test_posts_only_from_the_board_page_or_local_tools()
     print("ok")
