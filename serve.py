@@ -568,6 +568,10 @@ def needs_link(decision):
     return f"{board_url}needs/{quote(decision['session'], safe='')}/{quote(decision['pane'], safe='')}?item={quote(decision.get('kind', ''), safe='')}"
 
 
+def lead_id(agent):
+    return (agent.get("agent_session") or {}).get("value") or ""
+
+
 def lead_decisions(session, agents, tabs, workspaces):
     try:
         from decisions import parse_screen
@@ -584,7 +588,7 @@ def lead_decisions(session, agents, tabs, workspaces):
             cached = screen_cache[key] = dict(seq=seq, at=time.time(), parsed=parsed)
         if cached["parsed"]:
             story = story_of(agent_dir(agent), workspaces)
-            out.append(dict(cached["parsed"], session=session, pane=agent["pane_id"], status=agent["agent_status"],
+            out.append(dict(cached["parsed"], session=session, pane=agent["pane_id"], status=agent["agent_status"], lead_id=lead_id(agent),
                             level="decide" if cached["parsed"]["kind"] in ("choice", "approval") else "stopped",
                             title=agent.get("terminal_title_stripped") or "lead", story=os.path.basename(story) if story else "",
                                    tab=tabs.get(agent["tab_id"], "")))
@@ -602,6 +606,7 @@ def board_of_decision(decision, boards, stories, view_ids, workspaces, lead_coun
 def snapshot():
     sessions = []
     decisions = []
+    all_leads = []
     registered = load_boards()
     workspaces = load_config().get("workspaces", [])
     shown = set()
@@ -640,13 +645,20 @@ def snapshot():
             workers, decision["board_name"] = view.get("workers", []), view.get("name", "")
             decision["background"] = decision["kind"] == "report" and bool(decision.get("shells") or any(w["status"] == "working" for w in workers))
         decisions += waiting
+        for lead in leads:
+            story = story_of(agent_dir(lead), workspaces)
+            found = dict(session=session, pane=lead["pane_id"], title=lead.get("terminal_title_stripped") or "lead", status=lead["agent_status"],
+                         seq=lead.get("state_change_seq"), lead_id=lead_id(lead), tab=tabs.get(lead["tab_id"], ""), story=os.path.basename(story) if story else "")
+            found["board"] = board_of_decision(found, boards, by_story, [v["id"] for v in views], workspaces, len(leads))
+            found["board_name"] = next((v["name"] for v in views if v["id"] == found["board"]), "")
+            all_leads.append(found)
         if views:
             sessions.append(dict(name=session, alive=True, boards=views))
     idle = recent_stories(workspaces, shown)
     if idle:
         sessions.append(dict(name="工作区（无 herdr 会话）", alive=True,
                              boards=[dict(board_snapshot("workspace", story_board(story, [], {}), [], {}, exact=True), auto=True) for story in idle]))
-    return dict(sessions=sessions, decisions=decisions, build=int(os.path.getmtime(os.path.join(HERE, "index.html"))), archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
+    return dict(sessions=sessions, decisions=decisions, leads=all_leads, build=int(os.path.getmtime(os.path.join(HERE, "index.html"))), archives=[{k: v for k, v in a.items() if k != "root"} for a in list_archives()])
 
 
 def keyed(items, key, value):
@@ -773,7 +785,9 @@ def subscriptions():
 
 
 def subscribed(decision, keys):
-    return keys is None or f"{decision['session']}/*" in keys or f"{decision['session']}/{decision['board']}" in keys
+    session = decision["session"]
+    return keys is None or f"{session}/*" in keys or f"{session}/{decision['board']}" in keys \
+        or bool(decision.get("lead_id")) and f"{session}/lead:{decision['lead_id']}" in keys
 
 
 def notices(decisions, before, keys):
@@ -846,6 +860,22 @@ def focusable(session, pane):
 
 def awaiting(session, pane):
     return next((d for d in state["data"].get("decisions", []) if d["session"] == session and d["pane"] == pane), None)
+
+
+TIMELINE_TTL = 20
+timeline_cache = {}
+
+
+def lead_timeline(session, pane):
+    from decisions import parse_timeline
+    lead = next((l for l in state["data"].get("leads", []) if l["session"] == session and l["pane"] == pane), None)
+    if not lead:
+        return None
+    cached = timeline_cache.get((session, pane))
+    if not cached or cached["seq"] != lead["seq"] or (lead["status"] == "working" and time.time() - cached["at"] > TIMELINE_TTL):
+        screen = run(["herdr", "--session", session, "pane", "read", pane, "--source", "recent-unwrapped", "--lines", "400"], timeout=10)
+        cached = timeline_cache[(session, pane)] = dict(seq=lead["seq"], at=time.time(), messages=parse_timeline(screen))
+    return dict(session=session, pane=pane, seq=cached["seq"], messages=cached["messages"])
 
 
 def send_choice(session, pane, number, option, text=""):
@@ -1062,6 +1092,12 @@ class Handler(BaseHTTPRequestHandler):
             if not issue:
                 return self.send(404, "没有这条缺陷".encode(), "text/plain; charset=utf-8")
             return self.send(200, json.dumps(issue, ensure_ascii=False).encode(), "application/json; charset=utf-8")
+        if path == "/api/timeline":
+            query = parse_qs(urlparse(self.path).query)
+            found = lead_timeline(query.get("session", [""])[0], query.get("pane", [""])[0])
+            if not found:
+                return self.send(404, "这个 lead 已经不在了".encode(), "text/plain; charset=utf-8")
+            return self.send(200, json.dumps(found, ensure_ascii=False).encode(), "application/json; charset=utf-8")
         if path == "/api/archive":
             src = archive_dir(parse_qs(urlparse(self.path).query).get("id", [""])[0])
             if not src:

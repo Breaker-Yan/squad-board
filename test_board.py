@@ -485,3 +485,70 @@ if __name__ == "__main__":
     test_notification_opens_the_lead_on_the_board_home()
     test_posts_only_from_the_board_page_or_local_tools()
     print("ok")
+
+
+def test_timeline_keeps_user_messages_and_last_lead_words_per_turn():
+    rule = "─" * 40
+    screen = "\n".join([
+        "  tail of an older message cut off by the scrollback",
+        "",
+        "⏺ Plan is ready.",
+        "",
+        "✻ Brewed for 9s · done Tuesday 6:22 PM",
+        "",
+        "※ recap: we were planning",
+        "",
+        "❯ Please start, and",
+        "  keep it small",
+        "",
+        "⏺ Skill(herdr-workers)",
+        "  ⎿  Successfully loaded skill",
+        "",
+        "⏺ Starting a worker first.",
+        "",
+        "  Ran 2 shell commands",
+        "",
+        "⏺ Worker r1 is running.",
+        "",
+        "  Next steps",
+        "  1. wait for r1",
+        "",
+        "✻ Baked for 2m · done 2:16 PM · 1 shell still running",
+        "",
+        "⏺ Background command \"tests\" completed (exit code 0)",
+        "",
+        "⏺ Tests pass. Merge now?",
+        "",
+        rule, "❯ ", rule, "  ⏵⏵ bypass permissions on",
+    ])
+    timeline = decisions.parse_timeline(screen)
+    assert [(m["who"], m["at"]) for m in timeline] == [("lead", "Tuesday 6:22 PM"), ("user", ""), ("lead", "2:16 PM"), ("lead", "")]
+    assert timeline[1]["text"] == "Please start, and\nkeep it small"
+    assert timeline[2]["text"] == "Worker r1 is running.\n\nNext steps\n1. wait for r1"
+    assert timeline[3]["text"] == "Tests pass. Merge now?"
+    assert len(decisions.parse_timeline(screen, limit=2)) == 2
+    assert decisions.parse_timeline("⏺ " + "x" * 50, clip=10)[0]["text"] == "x" * 10 + "…"
+
+
+def test_single_lead_subscription_and_timeline_cache():
+    lone = dict(session="s", pane="p9", board="", lead_id="abc", level="stopped", done_at="", question="Go?")
+    assert serve.subscribed(lone, {"s/lead:abc"})
+    assert not serve.subscribed(lone, {"s/lead:other", "s/b"})
+    assert not serve.subscribed(dict(lone, lead_id=""), {"s/lead:"})
+    assert serve.subscribed(lone, {"s/*"})
+    reads, real_run = [], serve.run
+    serve.run = lambda cmd, timeout=20: reads.append(cmd) or "⏺ Done.\n\n✻ Baked for 2s · done 1:00 PM"
+    try:
+        serve.timeline_cache.clear()
+        serve.state["data"] = dict(leads=[dict(session="s", pane="p9", seq=4, status="idle")])
+        first = serve.lead_timeline("s", "p9")
+        assert first["messages"] == [dict(who="lead", text="Done.", at="1:00 PM")]
+        serve.lead_timeline("s", "p9")
+        assert len(reads) == 1 and "--lines" in reads[0]
+        serve.state["data"]["leads"][0]["seq"] = 5
+        serve.lead_timeline("s", "p9")
+        assert len(reads) == 2
+        assert serve.lead_timeline("s", "other") is None
+    finally:
+        serve.run = real_run
+        serve.state["data"] = {}

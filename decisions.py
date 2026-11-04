@@ -282,3 +282,50 @@ def parse_screen(ansi, status):
             return None
     return dict(kind=kind, question=question, options=options, details=details, cursor=cursor, suggestion=suggestion, recap=recap, done_at=done_at,
                 shells=int(shells.group(1)) if shells else 0)
+
+
+TURN_DONE = re.compile(r"^✻ .*·\s*done\s+((?:[A-Z][a-z]+day\s+)?\d{1,2}:\d{2}(?:\s?[AP]M)?)")
+TOOL_CALL = re.compile(r"^(?:[A-Z][A-Za-z]+\(|Background command\b|Monitor event\b|User answered\b)")
+TIMELINE_LIMIT = 8
+MESSAGE_LIMIT = 1500
+
+
+def parse_timeline(text, limit=TIMELINE_LIMIT, clip=MESSAGE_LIMIT):
+    plain = _plain_lines(text)
+    box = _find_input_box(plain)
+    lines = plain[:box[0]] if box else plain
+    turns, turn, block = [], [], None
+
+    def close():
+        nonlocal block
+        if block and block["lines"]:
+            body = "\n".join(block["lines"]).strip()
+            if body:
+                turn.append(dict(who=block["who"], text=body if len(body) <= clip else body[:clip] + "…"))
+        block = None
+
+    for line in lines:
+        done = TURN_DONE.match(line)
+        if done:
+            close()
+            turns.append((turn, done.group(1)))
+            turn = []
+        elif line.startswith("❯ ") and not SELECT_OPTION.match(line):
+            close()
+            block = dict(who="user", lines=[line[2:].strip()])
+        elif line.startswith("⏺ "):
+            close()
+            rest = line[2:].strip()
+            block = None if TOOL_CALL.match(rest) else dict(who="lead", lines=[rest])
+        elif line[:1] not in ("", " ") or TOOL_OUTPUT.search(line) or RECAP_LINE.match(line):
+            close()
+        elif block is not None:
+            block["lines"].append(line[2:] if line.startswith("  ") else line.strip())
+    close()
+    if turn:
+        turns.append((turn, ""))
+    out = []
+    for messages, at in turns:
+        leads = [m for m in messages if m["who"] == "lead"]
+        out += [dict(m, at=at if m["who"] == "lead" else "") for m in messages if m["who"] == "user" or (leads and m is leads[-1])]
+    return out[-limit:]
