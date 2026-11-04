@@ -328,6 +328,13 @@ body.is-home .layout { max-width: 1440px; margin-top: 12px; }
 .h-other.unsub { align-items: flex-start; }
 .h-other.unsub .h-si { margin-top: 6px; }
 .h-other.unsub .h-nm { white-space: normal; overflow: visible; line-height: 1.45; overflow-wrap: anywhere; }
+.h-sess summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; color: var(--muted); font-size: 13.5px; padding: 4px 10px; border-radius: 6px; }
+.h-sess summary::-webkit-details-marker { display: none; }
+.h-sess summary::before { content: "▸"; width: 10px; flex: none; color: var(--idle); }
+.h-sess[open] summary::before { content: "▾"; }
+.h-sess summary:hover { background: var(--panel-2); color: var(--ink); }
+.h-sess .h-other { padding-left: 22px; }
+.h-sess summary .h-nm { white-space: normal; overflow: visible; }
 .h-nm small { display: block; color: var(--idle); font-size: 12px; }
 .h-subbtn { flex: none; font: inherit; background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 1px 9px; font-size: 12.5px; color: var(--accent); cursor: pointer; }
 .h-subbtn:hover { border-color: var(--accent); }
@@ -781,8 +788,23 @@ function homeSide(model) {
     ${home.cleared.length ? `<h2 class="h-h2 gap">刚处理完</h2>${home.cleared.map(k => `<div class="h-lead cleared ${on(`L:${k}`)}" data-h="lead" data-lead="${esc(k)}" role="button" tabindex="0"><div class="h-r1"><i class="h-si done"></i><span class="h-nm">${esc(home.leadCache.get(k)?.name || k)}</span><span class="h-tm">刚刚</span></div></div>`).join("")}` : ""}
     <details class="h-fold" data-fold="othersOpen" ${home.othersOpen ? "open" : ""}><summary>其他任务 · ${others.length}</summary>${others.map(x => row(x)).join("")}</details>
     <details class="h-fold" data-fold="unsubOpen" ${home.unsubOpen ? "open" : ""}><summary>未订阅 · ${unsub.length}${unsubWaiting ? `（${unsubWaiting} 个在等）` : ""}</summary>
-      ${unsub.map(x => row(x, "unsub")).join("")}<div class="h-none">只有已订阅的会发通知、算进「在等你」</div></details>
+      ${unsubRows(unsub, row)}<div class="h-none">只有已订阅的会发通知、算进「在等你」</div></details>
     <button type="button" class="h-chip-other" data-h="otherchip">其他 ${others.length}</button>`;
+}
+const OPEN_SESSIONS_KEY = "squad-board.unsub-open-sessions";
+const openUnsubSessions = loadSet(OPEN_SESSIONS_KEY);
+function unsubRows(unsub, row) {
+  const bySession = new Map();
+  unsub.filter(x => x.session).forEach(x => bySession.set(x.session, [...(bySession.get(x.session) || []), x]));
+  return unsub.map(x => {
+    if (!x.session) return row(x, "unsub");
+    const group = bySession.get(x.session);
+    if (group.length === 1) return row(x, "unsub");
+    if (group[0] !== x) return "";
+    const waiting = group.filter(g => g.waiting).length;
+    return `<details class="h-sess" data-sess="${esc(x.session)}" ${openUnsubSessions.has(x.session) ? "open" : ""}><summary><span class="h-nm">${esc(x.session)} · ${group.length} 个 lead${waiting ? `（${waiting} 个在等）` : ""}</span></summary>
+      ${group.map(g => row({ ...g, name: g.name.slice(x.session.length + 3) || g.name }, "unsub")).join("")}</details>`;
+  }).join("");
 }
 function homeHead(lead, board) {
   const b = board || lead?.board, subscribed = lead ? lead.subscribed : isSubscribed(b), subKey = lead ? leadSubKey(lead) : boardKey(b);
@@ -900,7 +922,7 @@ function renderOverview() {
     ...[...leads.values()].filter(l => !l.board && l.subscribed && !inOrder.has(l.key)).map(l => ({ ...entry(null, l), right: l.status === "working" ? "进行中" : "" }))];
   const count = ls => ls.reduce((n, l) => n + l.open.length, 0);
   const unsub = [...boards.filter(b => !isSubscribed(b)).map(b => { const n = count(leadsOf(b)); return { ...entry(b, pickLead(b)), small: n ? `在等 ${n} 件` : stageOf(b), subKey: boardKey(b), waiting: n > 0 }; }),
-    ...[...leads.values()].filter(l => !l.board && !l.subscribed).map(l => ({ ...entry(null, l), small: `${l.open.length ? `在等 ${l.open.length} 件 · ` : ""}${l.lead_id ? "没认出看板 · 只订阅这个 lead" : "没认出看板 · 订阅整个会话"}`, subKey: leadSubKey(l), waiting: l.open.length > 0 }))];
+    ...[...leads.values()].filter(l => !l.board && !l.subscribed).map(l => ({ ...entry(null, l), small: `${l.open.length ? `在等 ${l.open.length} 件 · ` : ""}${l.lead_id ? "没认出看板 · 只订阅这个 lead" : "没认出看板 · 订阅整个会话"}`, subKey: leadSubKey(l), waiting: l.open.length > 0, session: l.session }))];
   homeModel = { leads, others, unsub };
   applyNeedsHash(leads);
   if (!home.sel || (home.sel.startsWith("L:") && !leads.has(home.sel.slice(2))) || (home.sel.startsWith("B:") && !boards.some(b => `B:${boardKey(b)}` === home.sel))) { home.sel = home.order[0] ? `L:${home.order[0]}` : null; home.cur = null; }
@@ -1050,7 +1072,11 @@ document.addEventListener("click", e => {
   if (act === "ack") return ack(d);
   if (act === "fill") { const box = byId("h-box"); box.value = b.dataset.o; home.drafts.set(leadKeyOf(d), box.value); autosize(); box.focus(); }
 });
-document.addEventListener("toggle", e => { const k = e.target.dataset?.fold; if (k) home[k] = e.target.open; }, true);
+document.addEventListener("toggle", e => {
+  const k = e.target.dataset?.fold; if (k) home[k] = e.target.open;
+  const sess = e.target.dataset?.sess;
+  if (sess && e.target.open !== openUnsubSessions.has(sess)) { e.target.open ? openUnsubSessions.add(sess) : openUnsubSessions.delete(sess); saveSet(OPEN_SESSIONS_KEY, openUnsubSessions); }
+}, true);
 document.addEventListener("input", e => { if (e.target.id === "h-box" && home.composerFor) { home.drafts.set(home.composerFor, e.target.value); autosize(); } });
 document.addEventListener("click", e => { if (e.target.closest("#h-send")) composerSend(); });
 document.addEventListener("keydown", e => {
